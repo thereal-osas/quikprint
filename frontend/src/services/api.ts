@@ -8,13 +8,14 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/
  * Custom error class for API errors
  */
 export class ApiError extends Error {
-  constructor(
-    public status: number,
-    public message: string,
-    public data?: unknown
-  ) {
+  status: number;
+  data?: unknown;
+
+  constructor(status: number, message: string, data?: unknown) {
     super(message);
     this.name = 'ApiError';
+    this.status = status;
+    this.data = data;
   }
 }
 
@@ -245,6 +246,7 @@ export interface OrderItemResponse {
   unit_price: number;
   total_price: number;
   selected_options: Record<string, string>;
+  file_url?: string;
 }
 
 export interface OrderResponse {
@@ -254,9 +256,11 @@ export interface OrderResponse {
   items: OrderItemResponse[];
   subtotal: number;
   shipping_cost: number;
+  shipping_fee?: number;
   tax: number;
+  vat?: number;
   total: number;
-  shipping_address: {
+  shipping_address: string | {
     name: string;
     street: string;
     city: string;
@@ -265,6 +269,10 @@ export interface OrderResponse {
     country: string;
   };
   created_at: string;
+  customer_name?: string;
+  customer_email?: string;
+  payment_status?: string;
+  admin_notes?: string;
 }
 
 export interface CreateOrderRequest {
@@ -428,6 +436,8 @@ export interface CustomerResponse {
   phone?: string;
   role: string;
   createdAt: string;
+  totalOrders?: number;
+  totalSpent?: number;
 }
 
 export interface AdminOrderResponse extends OrderResponse {
@@ -487,6 +497,7 @@ export interface UpdateProductRequest {
 export interface UpdateOrderStatusRequest {
   status: string;
   note?: string;
+  adminNotes?: string;
 }
 
 export const adminApi = {

@@ -145,7 +145,7 @@ export function Header() {
               <Link to="/account" className="hidden sm:flex items-center gap-2">
                 <Button variant="ghost" className="flex items-center gap-2">
                   <User className="h-5 w-5" />
-                  <span className="text-sm font-medium">{user?.first_name}</span>
+                  <span className="text-sm font-medium">{user?.firstName}</span>
                 </Button>
               </Link>
             ) : (
@@ -221,7 +221,7 @@ export function Header() {
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   <User className="h-4 w-4" />
-                  {user?.first_name}'s Account
+                  {user?.firstName}'s Account
                 </Link>
               ) : (
                 <Link

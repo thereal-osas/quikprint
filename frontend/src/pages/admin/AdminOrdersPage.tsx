@@ -130,7 +130,7 @@ export default function AdminOrdersPage() {
                   <TableCell>
                     <div>
                       <p className="font-medium">{order.customer_name || 'N/A'}</p>
-                      <p className="text-sm text-muted-foreground">{order.customer_email}</p>
+                      <p className="text-sm text-muted-foreground">{order.customer_email || order.user_email}</p>
                     </div>
                   </TableCell>
                   <TableCell>
@@ -264,7 +264,11 @@ export default function AdminOrdersPage() {
               {selectedOrder.shipping_address && (
                 <div className="border-t pt-4">
                   <p className="text-sm text-muted-foreground">Shipping Address</p>
-                  <p className="mt-1">{selectedOrder.shipping_address}</p>
+                  <p className="mt-1">
+                    {typeof selectedOrder.shipping_address === 'string'
+                      ? selectedOrder.shipping_address
+                      : `${selectedOrder.shipping_address.street}, ${selectedOrder.shipping_address.city}, ${selectedOrder.shipping_address.state} ${selectedOrder.shipping_address.zip}, ${selectedOrder.shipping_address.country}`}
+                  </p>
                 </div>
               )}
             </div>
