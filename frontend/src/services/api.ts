@@ -358,10 +358,11 @@ export const paymentsApi = {
 
 export interface FileUploadResponse {
   id: string;
-  filename: string;
-  content_type: string;
-  size: number;
-  url: string;
+  fileName: string;
+  filePath: string;
+  fileUrl: string;
+  fileSize: number;
+  fileType: string;
 }
 
 export const filesApi = {

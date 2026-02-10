@@ -43,17 +43,17 @@ export function Footer() {
               Trusted by businesses since 2010.
             </p>
             <div className="space-y-2 text-sm">
-              <a href="tel:1-800-555-0123" className="flex items-center gap-2 hover:text-primary-foreground/80">
+              <a href="tel:+234-816-036-0655" className="flex items-center gap-2 hover:text-primary-foreground/80">
                 <Phone className="h-4 w-4" />
-                1-800-555-0123
+                +234 816 036 0655
               </a>
               <a href="mailto:support@quikprint.com" className="flex items-center gap-2 hover:text-primary-foreground/80">
                 <Mail className="h-4 w-4" />
-                support@quikprint.com
+                info@quikprint.ng
               </a>
               <div className="flex items-start gap-2">
                 <MapPin className="h-4 w-4 mt-0.5" />
-                <span>123 Print Street, New York, NY 10001</span>
+                <span>1164 Ikorodu Rd, Onipanu Somolu, Lagos</span>
               </div>
             </div>
           </div>

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { products } from '@/data/mockData';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { formatPrice } from '@/lib/currency';
 
 export function FeaturedProducts() {
   const featuredProducts = products.slice(0, 4);
@@ -49,7 +50,7 @@ export function FeaturedProducts() {
                 </p>
                 <div className="flex items-baseline gap-1">
                   <span className="text-lg font-bold text-primary">
-                    ${product.basePrice.toFixed(2)}
+                    {formatPrice(product.basePrice)}
                   </span>
                   <span className="text-sm text-muted-foreground">starting</span>
                 </div>

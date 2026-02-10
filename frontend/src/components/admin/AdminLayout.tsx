@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
-import { useUser } from '@/hooks/useApi';
+import { useUser, useLogout } from '@/hooks/useApi';
 import { getAuthToken } from '@/services/api';
+import { toast } from 'sonner';
 import {
   LayoutDashboard,
   Package,
@@ -31,7 +32,20 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { data: user, isLoading, error } = useUser();
+  const logoutMutation = useLogout();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      await logoutMutation.mutateAsync();
+      toast.success('Signed out successfully');
+      navigate('/login');
+    } catch {
+      // Even if logout API fails, clear local state and redirect
+      toast.success('Signed out successfully');
+      navigate('/login');
+    }
+  };
 
   useEffect(() => {
     const token = getAuthToken();
@@ -133,10 +147,24 @@ export default function AdminLayout() {
                 <p className="text-xs text-muted-foreground truncate">{user.email}</p>
               </div>
             </div>
-            <Link to="/" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-              <LogOut className="h-4 w-4" />
-              Back to Store
-            </Link>
+            <div className="space-y-1">
+              <Link to="/" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+                <Package className="h-4 w-4" />
+                Back to Store
+              </Link>
+              <button
+                onClick={handleLogout}
+                disabled={logoutMutation.isPending}
+                className="flex items-center gap-2 text-sm text-destructive hover:text-destructive/80 w-full"
+              >
+                {logoutMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <LogOut className="h-4 w-4" />
+                )}
+                Sign Out
+              </button>
+            </div>
           </div>
         </div>
       </aside>

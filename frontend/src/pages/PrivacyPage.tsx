@@ -68,7 +68,7 @@ export default function PrivacyPage() {
             <h2 className="text-xl font-semibold text-foreground mb-3">7. Contact Us</h2>
             <p className="text-muted-foreground">
               For privacy-related questions, contact us at privacy@quikprint.com or 
-              call 1-800-555-0123.
+              call +234 816 036 0655.
             </p>
           </section>
         </div>

@@ -61,8 +61,9 @@ export default function ContactPage() {
                     <Phone className="h-5 w-5 text-primary mt-0.5" />
                     <div>
                       <p className="font-medium">Phone</p>
-                      <a href="tel:1-800-555-0123" className="text-muted-foreground hover:text-primary">
-                        1-800-555-0123
+                      <a href="tel:+234-816-036-0655" className="text-muted-foreground hover:text-primary">
+                        +234 909 998 0777 <br/>
+                        +234 816 036 0655
                       </a>
                     </div>
                   </div>
@@ -70,8 +71,8 @@ export default function ContactPage() {
                     <Mail className="h-5 w-5 text-primary mt-0.5" />
                     <div>
                       <p className="font-medium">Email</p>
-                      <a href="mailto:support@quikprint.com" className="text-muted-foreground hover:text-primary">
-                        support@quikprint.com
+                      <a href="mailto:info@quikprint.ng" className="text-muted-foreground hover:text-primary">
+                        info@quikprint.ng
                       </a>
                     </div>
                   </div>
@@ -80,8 +81,8 @@ export default function ContactPage() {
                     <div>
                       <p className="font-medium">Address</p>
                       <p className="text-muted-foreground">
-                        123 Print Street<br />
-                        New York, NY 10001
+                        164 Ikorodu Rd, Onipanu<br />
+                        Somolu, Lagos
                       </p>
                     </div>
                   </div>
@@ -98,18 +99,7 @@ export default function ContactPage() {
                 </div>
               </div>
 
-              <div className="bg-primary/5 border border-primary/20 rounded-lg p-6">
-                <h3 className="font-semibold text-foreground mb-2">
-                  Need Urgent Help?
-                </h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  For time-sensitive orders or urgent issues, please call our priority line.
-                </p>
-                <Button variant="default">
-                  <Phone className="mr-2 h-4 w-4" />
-                  Call Priority Support
-                </Button>
-              </div>
+              
             </div>
           </div>
         </div>

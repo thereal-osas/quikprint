@@ -86,14 +86,33 @@ type categoryData struct {
 
 func seedCategories(ctx context.Context, pool *pgxpool.Pool) (map[string]uuid.UUID, error) {
 	categories := []categoryData{
-		{"Business Cards", "business-cards", "Professional business cards with premium finishes and lamination options", "/images/business-cards.jpg"},
-		{"Marketing Brochures", "marketing-brochures", "High-quality brochures for marketing and corporate communications", "/images/brochures.jpg"},
-		{"Flyers and Handbills", "flyers-handbills", "Eye-catching flyers for events, promotions, and marketing", "/images/flyers.jpg"},
+		{"Badges and Medals", "badges-and-medals", "Custom badges and medals for awards, recognition, and events", "/images/badges-medals.jpg"},
 		{"Banners and Large Format", "banners-large-format", "Large format printing including banners, roll-ups, and signage", "/images/banners.jpg"},
-		{"Posters", "posters", "High-resolution posters in various sizes for advertising and decoration", "/images/posters.jpg"},
+		{"Branded Cufflinks", "branded-cufflinks", "Custom branded cufflinks for corporate gifts and special occasions", "/images/cufflinks.jpg"},
+		{"Branded Envelopes", "branded-envelopes", "Professional branded envelopes for corporate correspondence", "/images/envelopes.jpg"},
+		{"Branded Notepads and Jotters", "branded-notepads-jotters", "Custom notepads and jotters with your brand logo", "/images/notepads.jpg"},
+		{"Branded Nylon Bags", "branded-nylon-bags", "Durable branded nylon bags for promotions and events", "/images/nylon-bags.jpg"},
+		{"Branded Paper Bags", "branded-paper-bags", "Eco-friendly branded paper bags for retail and events", "/images/paper-bags.jpg"},
+		{"Business Cards", "business-cards", "Professional business cards with premium finishes and lamination options", "/images/business-cards.jpg"},
 		{"Calendars", "calendars", "Custom wall and desk calendars for year-round branding", "/images/calendars.jpg"},
+		{"Caps and Hats", "caps-and-hats", "Custom branded caps and hats for promotions and uniforms", "/images/caps-hats.jpg"},
+		{"Continuation Sheets", "continuation-sheets", "Professional continuation sheets for business correspondence", "/images/continuation-sheets.jpg"},
+		{"Corporate Gifts and Souvenirs", "corporate-gifts-souvenirs", "Premium corporate gifts and souvenirs for clients and employees", "/images/corporate-gifts.jpg"},
 		{"Custom T-shirts", "custom-tshirts", "Quality custom printed t-shirts for events and branding", "/images/tshirts.jpg"},
+		{"Customised Lanyards", "customised-lanyards", "Custom printed lanyards for ID cards and events", "/images/lanyards.jpg"},
+		{"Flyers and Handbills", "flyers-handbills", "Eye-catching flyers for events, promotions, and marketing", "/images/flyers.jpg"},
+		{"Folders", "folders", "Custom printed folders for presentations and document organization", "/images/folders.jpg"},
+		{"Frames and Wall Arts", "frames-wall-arts", "Custom frames and wall art prints for offices and homes", "/images/frames-wall-arts.jpg"},
+		{"Greeting Cards", "greeting-cards", "Custom greeting cards for all occasions", "/images/greeting-cards.jpg"},
+		{"Letter Heads", "letter-heads", "Professional letterheads for corporate correspondence", "/images/letterheads.jpg"},
+		{"Marketing Brochures", "marketing-brochures", "High-quality brochures for marketing and corporate communications", "/images/brochures.jpg"},
+		{"Plastic ID Card", "plastic-id-card", "Durable plastic ID cards for organizations and events", "/images/id-cards.jpg"},
+		{"Posters", "posters", "High-resolution posters in various sizes for advertising and decoration", "/images/posters.jpg"},
+		{"Stationeries", "stationeries", "Complete stationery packages for businesses and individuals", "/images/stationeries.jpg"},
+		{"Sticker", "sticker", "Custom stickers and labels for branding and packaging", "/images/stickers.jpg"},
+		{"Tote Bags", "tote-bags", "Eco-friendly custom tote bags for promotions and retail", "/images/tote-bags.jpg"},
 		{"Wedding Stationery", "wedding-stationery", "Elegant wedding invitations and event stationery", "/images/wedding.jpg"},
+		{"Woven Tags", "woven-tags", "High-quality woven tags for clothing and textile branding", "/images/woven-tags.jpg"},
 	}
 
 	categoryIDs := make(map[string]uuid.UUID)

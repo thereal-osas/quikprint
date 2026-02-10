@@ -10,6 +10,7 @@ import { useCart } from '@/context/CartContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { formatCurrency } from '@/lib/currency';
 
 interface ProductConfiguratorProps {
   product: Product;
@@ -129,7 +130,7 @@ export function ProductConfigurator({ product }: ProductConfiguratorProps) {
                       'text-sm font-medium',
                       opt.priceModifier > 0 ? 'text-muted-foreground' : 'text-success'
                     )}>
-                      {opt.priceModifier > 0 ? '+' : ''}${opt.priceModifier.toFixed(2)}
+                      {opt.priceModifier > 0 ? '+' : ''}{formatCurrency(opt.priceModifier)}
                     </span>
                   )}
                 </button>

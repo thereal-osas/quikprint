@@ -96,12 +96,14 @@ func (h *FileHandler) Upload(c *gin.Context) {
 		return
 	}
 
-	// Store relative path (used in UploadForOrderItem, but here we just return the ID)
-	_ = filepath.Join(datePath, filename)
+	// Store relative path
+	relativePath := filepath.Join(datePath, filename)
 
 	utils.SuccessResponse(c, 201, models.FileUploadResponse{
 		ID:       fileID,
 		FileName: header.Filename,
+		FilePath: relativePath,
+		FileURL:  "/uploads/" + relativePath,
 		FileSize: header.Size,
 		FileType: contentType,
 	})

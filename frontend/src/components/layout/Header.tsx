@@ -63,10 +63,9 @@ export function Header() {
   };
 
   const navigation = [
+    { name: 'About', href: '/about' },
     { name: 'Products', href: '/products' },
-    { name: 'Business Cards', href: '/products/business-cards' },
-    { name: 'Banners & Signs', href: '/products/banners-signs' },
-    { name: 'Marketing Materials', href: '/products/flyers-brochures' },
+    { name: 'Contact', href: '/contact' },
   ];
 
   return (
@@ -76,9 +75,9 @@ export function Header() {
         <div className="container-main">
           <div className="flex items-center justify-between h-9 text-sm">
             <div className="flex items-center gap-4">
-              <a href="tel:1-800-555-0123" className="flex items-center gap-1.5 hover:opacity-80">
+              <a href="tel:+234-816-036-0655" className="flex items-center gap-1.5 hover:opacity-80">
                 <Phone className="h-3.5 w-3.5" />
-                <span>1-800-555-0123</span>
+                <span>+234 816 036 0655</span>
               </a>
               <span className="hidden sm:inline">Free shipping on orders over {formatPrice(FREE_SHIPPING_THRESHOLD)}</span>
             </div>

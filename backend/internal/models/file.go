@@ -19,7 +19,8 @@ type UploadedFile struct {
 type FileUploadResponse struct {
 	ID       uuid.UUID `json:"id"`
 	FileName string    `json:"fileName"`
+	FilePath string    `json:"filePath"`
+	FileURL  string    `json:"fileUrl"`
 	FileSize int64     `json:"fileSize"`
 	FileType string    `json:"fileType"`
 }
-

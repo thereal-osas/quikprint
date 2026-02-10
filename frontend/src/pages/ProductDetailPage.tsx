@@ -4,6 +4,7 @@ import { ProductConfigurator } from '@/components/product/ProductConfigurator';
 import { products } from '@/data/mockData';
 import { ChevronRight, Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { formatPrice } from '@/lib/currency';
 
 export default function ProductDetailPage() {
   const { slug } = useParams();
@@ -93,7 +94,7 @@ export default function ProductDetailPage() {
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Starting at:</span>
                 <span className="font-bold text-primary text-lg">
-                  ${product.basePrice.toFixed(2)}
+                  {formatPrice(product.basePrice)}
                 </span>
               </div>
               <div className="flex items-center gap-2">
