@@ -97,10 +97,7 @@ export default function ProductDetailPage() {
                   {formatPrice(product.basePrice)}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">Turnaround:</span>
-                <span className="font-medium">{product.turnaround}</span>
-              </div>
+             
             </div>
           </div>
         </div>

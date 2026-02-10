@@ -35,11 +35,9 @@ export function ProductCard({ product }: ProductCardProps) {
             <span className="text-lg font-bold text-primary">
               {formatPrice(product.basePrice)}
             </span>
-            <span className="text-sm text-muted-foreground">starting</span>
+           
           </div>
-          <span className="text-xs text-muted-foreground">
-            {product.turnaround}
-          </span>
+        
         </div>
       </div>
     </Link>
