@@ -67,6 +67,8 @@ func (s *PaymentService) InitializePayment(req *PaystackInitRequest) (*PaystackI
 		return nil, err
 	}
 
+	fmt.Printf("DEBUG: Sending to Paystack: %s\n", string(jsonData))
+
 	httpReq, err := http.NewRequest("POST", paystackBaseURL+"/transaction/initialize", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, err
@@ -86,9 +88,26 @@ func (s *PaymentService) InitializePayment(req *PaystackInitRequest) (*PaystackI
 		return nil, err
 	}
 
+	fmt.Printf("DEBUG: Paystack response status: %d\n", resp.StatusCode)
+	fmt.Printf("DEBUG: Paystack response body: %s\n", string(body))
+
+	// Check for non-200 status first
+	if resp.StatusCode != 200 {
+		fmt.Printf("DEBUG: Paystack returned error status: %d\n", resp.StatusCode)
+
+		// Try to parse the error response
+		var errResp map[string]interface{}
+		if err := json.Unmarshal(body, &errResp); err == nil {
+			if message, ok := errResp["message"]; ok {
+				return nil, fmt.Errorf("paystack error: %v (status %d)", message, resp.StatusCode)
+			}
+		}
+		return nil, fmt.Errorf("paystack error: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
 	var paystackResp PaystackInitResponse
 	if err := json.Unmarshal(body, &paystackResp); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse paystack response: %v, body: %s", err, string(body))
 	}
 
 	if !paystackResp.Status {
@@ -128,4 +147,3 @@ func (s *PaymentService) VerifyPayment(reference string) (*PaystackVerifyRespons
 func (s *PaymentService) GetPublicKey() string {
 	return s.publicKey
 }
-

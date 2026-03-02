@@ -1,16 +1,65 @@
 import { useParams, Link } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
 import { ProductConfigurator } from '@/components/product/ProductConfigurator';
-import { products } from '@/data/mockData';
-import { ChevronRight, Check } from 'lucide-react';
+import type { DimensionalPricingConfig } from '@/components/product/ProductConfigurator';
+import { ImageGallery } from '@/components/product/ImageGallery';
+import { useProduct, usePublicProductPricing } from '@/hooks/useApi';
+import { ChevronRight, Check, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { formatPrice } from '@/lib/currency';
+import { getImageUrls } from '@/lib/utils';
+import type { Product, ProductOption } from '@/types/product';
+import type { ProductResponse } from '@/services/api';
+
+// Helper function to map API response to Product type
+function mapProductResponseToProduct(response: ProductResponse): Product {
+  return {
+    id: response.id,
+    name: response.name,
+    slug: response.slug,
+    category: response.category,
+    categorySlug: response.categorySlug,
+    description: response.description,
+    shortDescription: response.shortDescription || response.description?.substring(0, 100) + '...' || '',
+    basePrice: response.basePrice,
+    images: getImageUrls(response.images),
+    options: (response.options as ProductOption[]) || [],
+    features: response.features || [],
+    turnaround: response.turnaround || '3-5 business days',
+    minQuantity: response.minQuantity || 1,
+    pricingTiers: response.pricingTiers,
+  };
+}
 
 export default function ProductDetailPage() {
   const { slug } = useParams();
-  const product = products.find((p) => p.slug === slug);
+  const { data: productResponse, isLoading: productLoading, error: productError } = useProduct(slug || '');
 
-  if (!product) {
+  // Fetch pricing data for the product
+  const { data: productPricing } = usePublicProductPricing(productResponse?.id);
+
+  // Map dimensional pricing to config format
+  const dimensionalPricing: DimensionalPricingConfig | null = productPricing?.dimensionalPricing
+    ? {
+        ratePerUnit: productPricing.dimensionalPricing.ratePerUnit,
+        unit: productPricing.dimensionalPricing.unit as 'sqft' | 'sqin' | 'sqm' | 'sqcm',
+        minCharge: productPricing.dimensionalPricing.minCharge,
+      }
+    : null;
+
+  // Loading state
+  if (productLoading) {
+    return (
+      <Layout>
+        <div className="container-main section-padding flex items-center justify-center min-h-[400px]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </Layout>
+    );
+  }
+
+  // Error or not found state
+  if (productError || !productResponse) {
     return (
       <Layout>
         <div className="container-main section-padding text-center">
@@ -25,6 +74,9 @@ export default function ProductDetailPage() {
       </Layout>
     );
   }
+
+  // Map API response to Product type
+  const product = mapProductResponseToProduct(productResponse);
 
   return (
     <Layout>
@@ -57,14 +109,8 @@ export default function ProductDetailPage() {
       <div className="container-main section-padding">
         {/* Product header */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
-          {/* Product image */}
-          <div className="aspect-square bg-muted rounded-lg overflow-hidden">
-            <img
-              src={product.images[0]}
-              alt={product.name}
-              className="w-full h-full object-cover"
-            />
-          </div>
+          {/* Product images gallery */}
+          <ImageGallery images={product.images} productName={product.name} />
 
           {/* Product info */}
           <div>
@@ -107,7 +153,7 @@ export default function ProductDetailPage() {
           <h2 className="text-xl font-bold text-foreground mb-6">
             Configure Your Order
           </h2>
-          <ProductConfigurator product={product} />
+          <ProductConfigurator product={product} dimensionalPricing={dimensionalPricing} />
         </div>
       </div>
     </Layout>

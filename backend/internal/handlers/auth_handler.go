@@ -2,10 +2,13 @@ package handlers
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/pquerna/otp/totp"
 	"github.com/quikprint/backend/internal/models"
 	"github.com/quikprint/backend/internal/repository"
 	"github.com/quikprint/backend/internal/utils"
@@ -13,11 +16,12 @@ import (
 
 type AuthHandler struct {
 	userRepo   *repository.UserRepository
+	orderRepo  *repository.OrderRepository
 	jwtManager *utils.JWTManager
 }
 
-func NewAuthHandler(userRepo *repository.UserRepository, jwtManager *utils.JWTManager) *AuthHandler {
-	return &AuthHandler{userRepo: userRepo, jwtManager: jwtManager}
+func NewAuthHandler(userRepo *repository.UserRepository, orderRepo *repository.OrderRepository, jwtManager *utils.JWTManager) *AuthHandler {
+	return &AuthHandler{userRepo: userRepo, orderRepo: orderRepo, jwtManager: jwtManager}
 }
 
 func (h *AuthHandler) Register(c *gin.Context) {
@@ -79,13 +83,14 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 	utils.SuccessResponse(c, 201, models.AuthResponse{
 		User: models.UserProfile{
-			ID:        user.ID,
-			Email:     user.Email,
-			FirstName: user.FirstName,
-			LastName:  user.LastName,
-			Phone:     user.Phone,
-			Role:      user.Role,
-			CreatedAt: user.CreatedAt,
+			ID:               user.ID,
+			Email:            user.Email,
+			FirstName:        user.FirstName,
+			LastName:         user.LastName,
+			Phone:            user.Phone,
+			Role:             user.Role,
+			TwoFactorEnabled: user.TwoFactorEnabled,
+			CreatedAt:        user.CreatedAt,
 		},
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -112,6 +117,28 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Check if 2FA is enabled
+	if user.TwoFactorEnabled {
+		// Generate a session token for 2FA verification
+		sessionToken := generateSessionToken()
+		session := &repository.TwoFactorSession{
+			UserID:       user.ID,
+			SessionToken: sessionToken,
+			ExpiresAt:    time.Now().Add(5 * time.Minute), // 5 minutes to complete 2FA
+		}
+		if err := h.userRepo.CreateTwoFactorSession(ctx, session); err != nil {
+			utils.ErrorResponse(c, 500, "Failed to create 2FA session")
+			return
+		}
+
+		utils.SuccessResponse(c, 200, models.LoginResponse{
+			RequiresTwoFA:  true,
+			TwoFASessionID: sessionToken,
+		})
+		return
+	}
+
+	// No 2FA, proceed with normal login
 	accessToken, err := h.jwtManager.GenerateAccessToken(user)
 	if err != nil {
 		utils.ErrorResponse(c, 500, "Failed to generate token")
@@ -130,19 +157,111 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		ExpiresAt: expiresAt,
 	})
 
-	utils.SuccessResponse(c, 200, models.AuthResponse{
-		User: models.UserProfile{
-			ID:        user.ID,
-			Email:     user.Email,
-			FirstName: user.FirstName,
-			LastName:  user.LastName,
-			Phone:     user.Phone,
-			Role:      user.Role,
-			CreatedAt: user.CreatedAt,
-		},
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
+	userProfile := models.UserProfile{
+		ID:               user.ID,
+		Email:            user.Email,
+		FirstName:        user.FirstName,
+		LastName:         user.LastName,
+		Phone:            user.Phone,
+		Role:             user.Role,
+		TwoFactorEnabled: user.TwoFactorEnabled,
+		CreatedAt:        user.CreatedAt,
+	}
+
+	utils.SuccessResponse(c, 200, models.LoginResponse{
+		User:          &userProfile,
+		AccessToken:   accessToken,
+		RefreshToken:  refreshToken,
+		RequiresTwoFA: false,
 	})
+}
+
+// VerifyTwoFactorLogin completes the 2FA login process
+func (h *AuthHandler) VerifyTwoFactorLogin(c *gin.Context) {
+	var req struct {
+		SessionID string `json:"sessionId" binding:"required"`
+		Code      string `json:"code" binding:"required,len=6"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ValidationErrorResponse(c, err.Error())
+		return
+	}
+
+	ctx := context.Background()
+
+	// Get the 2FA session
+	session, err := h.userRepo.GetTwoFactorSession(ctx, req.SessionID)
+	if err != nil || session == nil {
+		utils.ErrorResponse(c, 401, "Invalid or expired session")
+		return
+	}
+
+	// Check if session is expired
+	if time.Now().After(session.ExpiresAt) {
+		h.userRepo.DeleteTwoFactorSession(ctx, req.SessionID)
+		utils.ErrorResponse(c, 401, "Session expired. Please login again")
+		return
+	}
+
+	// Get the user
+	user, err := h.userRepo.GetByID(ctx, session.UserID)
+	if err != nil || user == nil {
+		utils.ErrorResponse(c, 401, "User not found")
+		return
+	}
+
+	// Verify the TOTP code
+	if !totp.Validate(req.Code, user.TwoFactorSecret) {
+		utils.ErrorResponse(c, 401, "Invalid verification code")
+		return
+	}
+
+	// Delete the 2FA session
+	h.userRepo.DeleteTwoFactorSession(ctx, req.SessionID)
+
+	// Generate tokens
+	accessToken, err := h.jwtManager.GenerateAccessToken(user)
+	if err != nil {
+		utils.ErrorResponse(c, 500, "Failed to generate token")
+		return
+	}
+
+	refreshToken, expiresAt, err := h.jwtManager.GenerateRefreshToken(user)
+	if err != nil {
+		utils.ErrorResponse(c, 500, "Failed to generate refresh token")
+		return
+	}
+
+	h.userRepo.SaveRefreshToken(ctx, &models.RefreshToken{
+		UserID:    user.ID,
+		Token:     refreshToken,
+		ExpiresAt: expiresAt,
+	})
+
+	userProfile := models.UserProfile{
+		ID:               user.ID,
+		Email:            user.Email,
+		FirstName:        user.FirstName,
+		LastName:         user.LastName,
+		Phone:            user.Phone,
+		Role:             user.Role,
+		TwoFactorEnabled: user.TwoFactorEnabled,
+		CreatedAt:        user.CreatedAt,
+	}
+
+	utils.SuccessResponse(c, 200, models.LoginResponse{
+		User:          &userProfile,
+		AccessToken:   accessToken,
+		RefreshToken:  refreshToken,
+		RequiresTwoFA: false,
+	})
+}
+
+// generateSessionToken generates a random session token
+func generateSessionToken() string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 func (h *AuthHandler) RefreshToken(c *gin.Context) {
@@ -203,14 +322,22 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 		return
 	}
 
+	// Get user order stats
+	orderStats, _ := h.orderRepo.GetUserOrderStats(ctx, userID)
+	if orderStats == nil {
+		orderStats = &models.UserOrderStats{TotalOrders: 0, TotalSpent: 0}
+	}
+
 	utils.SuccessResponse(c, 200, models.UserProfile{
-		ID:        user.ID,
-		Email:     user.Email,
-		FirstName: user.FirstName,
-		LastName:  user.LastName,
-		Phone:     user.Phone,
-		Role:      user.Role,
-		CreatedAt: user.CreatedAt,
+		ID:               user.ID,
+		Email:            user.Email,
+		FirstName:        user.FirstName,
+		LastName:         user.LastName,
+		Phone:            user.Phone,
+		Role:             user.Role,
+		TwoFactorEnabled: user.TwoFactorEnabled,
+		CreatedAt:        user.CreatedAt,
+		TotalOrders:      orderStats.TotalOrders,
+		TotalSpent:       orderStats.TotalSpent,
 	})
 }
-

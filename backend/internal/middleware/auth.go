@@ -82,6 +82,43 @@ func (m *AuthMiddleware) RequireAdmin() gin.HandlerFunc {
 	}
 }
 
+// RequireManagerOrAdmin allows both managers and admins to access the resource
+func (m *AuthMiddleware) RequireManagerOrAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			utils.ErrorResponse(c, 401, "Authorization header required")
+			c.Abort()
+			return
+		}
+
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			utils.ErrorResponse(c, 401, "Invalid authorization header format")
+			c.Abort()
+			return
+		}
+
+		claims, err := m.jwtManager.ValidateAccessToken(parts[1])
+		if err != nil {
+			utils.ErrorResponse(c, 401, "Invalid or expired token")
+			c.Abort()
+			return
+		}
+
+		if claims.Role != models.RoleAdmin && claims.Role != models.RoleManager {
+			utils.ErrorResponse(c, 403, "Manager or Admin access required")
+			c.Abort()
+			return
+		}
+
+		c.Set("userID", claims.UserID)
+		c.Set("userEmail", claims.Email)
+		c.Set("userRole", claims.Role)
+		c.Next()
+	}
+}
+
 func (m *AuthMiddleware) OptionalAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -105,4 +142,3 @@ func (m *AuthMiddleware) OptionalAuth() gin.HandlerFunc {
 		c.Next()
 	}
 }
-

@@ -56,6 +56,13 @@ export function getCurrencyCode(): string {
 
 /**
  * Free shipping threshold in NGN
+ * Can be configured via environment variable VITE_FREE_SHIPPING_THRESHOLD
  */
-export const FREE_SHIPPING_THRESHOLD = 50000;
+export const FREE_SHIPPING_THRESHOLD = parseInt(import.meta.env.VITE_FREE_SHIPPING_THRESHOLD || '50000', 10);
+
+/**
+ * Standard shipping fee in NGN
+ * Can be configured via environment variable VITE_SHIPPING_FEE
+ */
+export const SHIPPING_FEE = parseInt(import.meta.env.VITE_SHIPPING_FEE || '5000', 10);
 

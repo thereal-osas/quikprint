@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, Package, Mail, ArrowRight } from 'lucide-react';
@@ -10,7 +10,9 @@ function generateOrderNumber(): string {
 }
 
 export default function OrderSuccessPage() {
-  const [orderNumber] = useState(generateOrderNumber);
+  const location = useLocation();
+  const state = location.state as { orderNumber?: string } | null;
+  const [orderNumber] = useState(() => state?.orderNumber || generateOrderNumber());
 
   return (
     <Layout>

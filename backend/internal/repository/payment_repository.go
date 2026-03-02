@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 
@@ -28,9 +29,15 @@ func (r *PaymentRepository) Create(ctx context.Context, payment *models.Payment)
 	payment.CreatedAt = time.Now()
 	payment.UpdatedAt = time.Now()
 
+	// Handle empty paystack_response - use NULL instead of empty string for JSONB field
+	var paystackResponse interface{} = nil
+	if payment.PaystackResponse != "" {
+		paystackResponse = payment.PaystackResponse
+	}
+
 	_, err := r.db.Exec(ctx, query,
 		payment.ID, payment.OrderID, payment.PaystackRef, payment.Amount, payment.Currency,
-		payment.Status, payment.PaystackResponse, payment.CreatedAt, payment.UpdatedAt,
+		payment.Status, paystackResponse, payment.CreatedAt, payment.UpdatedAt,
 	)
 	return err
 }
@@ -41,12 +48,16 @@ func (r *PaymentRepository) GetByReference(ctx context.Context, ref string) (*mo
 		FROM payments WHERE paystack_ref = $1
 	`
 	var p models.Payment
+	var paystackResponse sql.NullString
 	err := r.db.QueryRow(ctx, query, ref).Scan(
 		&p.ID, &p.OrderID, &p.PaystackRef, &p.Amount, &p.Currency,
-		&p.Status, &p.PaystackResponse, &p.CreatedAt, &p.UpdatedAt,
+		&p.Status, &paystackResponse, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
+	}
+	if paystackResponse.Valid {
+		p.PaystackResponse = paystackResponse.String
 	}
 	return &p, err
 }
@@ -57,12 +68,16 @@ func (r *PaymentRepository) GetByOrderID(ctx context.Context, orderID uuid.UUID)
 		FROM payments WHERE order_id = $1 ORDER BY created_at DESC LIMIT 1
 	`
 	var p models.Payment
+	var paystackResponse sql.NullString
 	err := r.db.QueryRow(ctx, query, orderID).Scan(
 		&p.ID, &p.OrderID, &p.PaystackRef, &p.Amount, &p.Currency,
-		&p.Status, &p.PaystackResponse, &p.CreatedAt, &p.UpdatedAt,
+		&p.Status, &paystackResponse, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
+	}
+	if paystackResponse.Valid {
+		p.PaystackResponse = paystackResponse.String
 	}
 	return &p, err
 }
@@ -73,3 +88,37 @@ func (r *PaymentRepository) UpdateStatus(ctx context.Context, ref string, status
 	return err
 }
 
+func (r *PaymentRepository) GetAllPayments(ctx context.Context) ([]models.Payment, error) {
+	query := `
+		SELECT id, order_id, paystack_ref, amount, currency, status, paystack_response, created_at, updated_at
+		FROM payments
+		ORDER BY created_at DESC
+	`
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var payments []models.Payment
+	for rows.Next() {
+		var p models.Payment
+		var paystackResponse sql.NullString
+		err := rows.Scan(
+			&p.ID, &p.OrderID, &p.PaystackRef, &p.Amount, &p.Currency,
+			&p.Status, &paystackResponse, &p.CreatedAt, &p.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// Handle NULL paystack_response
+		if paystackResponse.Valid {
+			p.PaystackResponse = paystackResponse.String
+		}
+
+		payments = append(payments, p)
+	}
+
+	return payments, nil
+}

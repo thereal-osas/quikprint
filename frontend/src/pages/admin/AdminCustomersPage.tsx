@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useAdminCustomers } from '@/hooks/useApi';
+import { useAdminCustomers, useAdminOrders } from '@/hooks/useApi';
 import { Button } from '@/components/ui/button';
+import { OrderStatusBadge } from '@/components/ui/OrderStatusBadge';
 import {
   Dialog,
   DialogContent,
@@ -16,14 +17,16 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
-import { Loader2, Eye, Search } from 'lucide-react';
+import { Loader2, Eye, Search, ChevronDown, ChevronUp, Package } from 'lucide-react';
 import { formatPrice } from '@/lib/currency';
 import type { CustomerResponse } from '@/services/api';
 
 export default function AdminCustomersPage() {
   const { data: customers, isLoading } = useAdminCustomers();
+  const { data: allOrders } = useAdminOrders();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerResponse | null>(null);
+  const [showOrders, setShowOrders] = useState(false);
 
   const filteredCustomers = customers?.filter((customer) => {
     const search = searchTerm.toLowerCase();
@@ -33,6 +36,11 @@ export default function AdminCustomersPage() {
       customer.lastName?.toLowerCase().includes(search)
     );
   });
+
+  // Get orders for selected customer
+  const customerOrders = selectedCustomer && allOrders 
+    ? allOrders.filter(order => order.user_id === selectedCustomer.id)
+    : [];
 
   if (isLoading) {
     return (
@@ -159,6 +167,50 @@ export default function AdminCustomersPage() {
                   <p className="text-2xl font-bold">{formatPrice(selectedCustomer.totalSpent || 0)}</p>
                   <p className="text-sm text-muted-foreground">Total Spent</p>
                 </div>
+              </div>
+
+              {/* View More / Orders Section */}
+              <div className="border-t pt-4">
+                <button
+                  onClick={() => setShowOrders(!showOrders)}
+                  className="flex items-center justify-between w-full text-left hover:bg-muted p-2 rounded-md transition-colors"
+                >
+                  <span className="font-medium">View Order History</span>
+                  {showOrders ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                </button>
+                
+                {showOrders && (
+                  <div className="mt-4 space-y-3">
+                    {customerOrders.length === 0 ? (
+                      <div className="text-center py-6 text-muted-foreground">
+                        <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p>No orders found for this customer</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 max-h-[300px] overflow-y-auto">
+                        {customerOrders.map((order) => (
+                          <div key={order.id} className="border rounded-lg p-3 bg-background">
+                            <div className="flex justify-between items-start mb-2">
+                              <div>
+                                <p className="font-medium">{order.order_number}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {order.created_at ? new Date(order.created_at).toLocaleDateString() : 'N/A'}
+                                </p>
+                              </div>
+                              <OrderStatusBadge status={order.status} />
+                            </div>
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="text-muted-foreground">
+                                {order.items?.length || 0} items
+                              </span>
+                              <span className="font-semibold">{formatPrice(order.total)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}

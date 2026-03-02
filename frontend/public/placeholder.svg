@@ -1,0 +1,25 @@
+<svg width="800" height="500" viewBox="0 0 800 500" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">QuikPrint Placeholder Image</title>
+  <desc id="desc">Neutral placeholder used when no image is available.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E5E7EB" />
+      <stop offset="100%" stop-color="#D1D5DB" />
+    </linearGradient>
+  </defs>
+  <rect width="800" height="500" fill="url(#bg)" />
+  <rect x="40" y="40" width="720" height="420" rx="24" fill="white" stroke="#E5E7EB" stroke-width="2"/>
+  <g transform="translate(0, 20)">
+    <circle cx="260" cy="230" r="72" fill="#EFF6FF" />
+    <path d="M220 250 L248 214 L276 246 L300 220 L332 260" fill="none" stroke="#3B82F6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="420" y="220" text-anchor="start" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="28" fill="#111827">
+    QuikPrint
+  </text>
+  <text x="420" y="260" text-anchor="start" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="16" fill="#6B7280">
+    Image placeholder
+  </text>
+  <text x="420" y="288" text-anchor="start" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="14" fill="#9CA3AF">
+    Upload a hero or product image to replace this.
+  </text>
+</svg>

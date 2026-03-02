@@ -108,6 +108,17 @@ export interface RegisterRequest {
   phone?: string;
 }
 
+export interface UserProfile {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  phone?: string;
+  role: string;
+  twoFactorEnabled: boolean;
+  createdAt: string;
+}
+
 export interface AuthResponse {
   user: {
     id: string;
@@ -120,9 +131,43 @@ export interface AuthResponse {
   refreshToken: string;
 }
 
+// Login response that may require 2FA
+export interface LoginResponse {
+  user?: UserProfile;
+  accessToken?: string;
+  refreshToken?: string;
+  requiresTwoFA: boolean;
+  twoFASessionId?: string;
+}
+
+// 2FA Types
+export interface TwoFactorSetupResponse {
+  secret: string;
+  qrCodeUrl: string;
+}
+
+export interface TwoFactorStatusResponse {
+  enabled: boolean;
+}
+
+export interface VerifyTwoFactorRequest {
+  sessionId: string;
+  code: string;
+}
+
+export interface TwoFactorVerifyRequest {
+  code: string;
+}
+
 export const authApi = {
   login: (data: LoginRequest) =>
-    request<AuthResponse>('/auth/login', {
+    request<LoginResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  verifyTwoFactor: (data: VerifyTwoFactorRequest) =>
+    request<LoginResponse>('/auth/verify-2fa', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -133,12 +178,34 @@ export const authApi = {
       body: JSON.stringify(data),
     }),
 
-  getMe: () => request<AuthResponse['user']>('/auth/me'),
+  getMe: () => request<UserProfile>('/auth/me'),
 
   logout: () => {
     removeAuthToken();
     return Promise.resolve();
   },
+};
+
+// ==================== 2FA API ====================
+
+export const twoFactorApi = {
+  getStatus: () => request<TwoFactorStatusResponse>('/auth/2fa/status'),
+
+  setup: () => request<TwoFactorSetupResponse>('/auth/2fa/setup', {
+    method: 'POST',
+  }),
+
+  enable: (data: TwoFactorVerifyRequest) =>
+    request<{ message: string }>('/auth/2fa/enable', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  disable: (data: TwoFactorVerifyRequest) =>
+    request<{ message: string }>('/auth/2fa/disable', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 // ==================== PRODUCTS API ====================
@@ -148,13 +215,27 @@ export interface ProductResponse {
   name: string;
   slug: string;
   description: string;
-  base_price: number;
-  category_id: string;
-  category_name: string;
+  shortDescription: string;
+  basePrice: number;
+  categoryId: string;
+  category: string;
+  categorySlug: string;
   images: string[];
   options: unknown[];
-  is_active: boolean;
-  created_at: string;
+  features: string[];
+  turnaround: string;
+  minQuantity: number;
+  pricingTiers?: PricingTier[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PricingTier {
+  id: string;
+  productId: string;
+  minQty: number;
+  maxQty?: number;
+  price: number;
 }
 
 export const productsApi = {
@@ -177,8 +258,10 @@ export interface CategoryResponse {
   name: string;
   slug: string;
   description: string;
-  image_url: string;
-  is_active: boolean;
+  image: string;
+  productCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export const categoriesApi = {
@@ -268,7 +351,8 @@ export interface OrderResponse {
     zip: string;
     country: string;
   };
-  created_at: string;
+  created_at?: string;
+  createdAt?: string; // Backend returns camelCase
   customer_name?: string;
   customer_email?: string;
   payment_status?: string;
@@ -276,7 +360,7 @@ export interface OrderResponse {
 }
 
 export interface CreateOrderRequest {
-  shipping_address: {
+  shippingAddress: {
     name: string;
     street: string;
     city: string;
@@ -284,7 +368,15 @@ export interface CreateOrderRequest {
     zip: string;
     country: string;
   };
-  payment_method: string;
+  items: CreateOrderItemRequest[];
+  discount?: number;
+}
+
+export interface CreateOrderItemRequest {
+  productId: string;
+  quantity: number;
+  // Allow arbitrary configuration values (dimensions, options, flags, etc.)
+  configuration: Record<string, unknown>;
 }
 
 export const ordersApi = {
@@ -293,7 +385,7 @@ export const ordersApi = {
   getById: (id: string) => request<OrderResponse>(`/orders/${id}`),
 
   create: (data: CreateOrderRequest) =>
-    request<{ order: OrderResponse; payment_url?: string }>('/orders', {
+    request<OrderResponse>('/orders', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -322,13 +414,14 @@ export const pricingApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  getProductPricing: (productId: string) =>
+    request<ProductPricingResponse>(`/pricing/products/${productId}`),
 };
 
 // ==================== PAYMENTS API ====================
 
 export interface InitializePaymentRequest {
-  order_id: string;
-  callback_url: string;
+  orderId: string;
 }
 
 export interface PaymentResponse {
@@ -441,6 +534,23 @@ export interface CustomerResponse {
   totalSpent?: number;
 }
 
+export type UserRole = 'customer' | 'manager' | 'admin';
+
+export interface UserResponse {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  phone?: string;
+  role: UserRole;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateUserRoleRequest {
+  role: UserRole;
+}
+
 export interface AdminOrderResponse extends OrderResponse {
   user_id: string;
   user_email?: string;
@@ -501,6 +611,18 @@ export interface UpdateOrderStatusRequest {
   adminNotes?: string;
 }
 
+export interface BulkUpdatePriceRequest {
+  productIds: string[];
+  updateType: 'set' | 'increase' | 'decrease' | 'percentage';
+  value: number;
+}
+
+export interface BulkUpdatePriceResponse {
+  updatedCount: number;
+  failedCount: number;
+  failedIds?: string[];
+}
+
 export const adminApi = {
   // Dashboard
   getDashboardStats: () => request<DashboardStats>('/admin/dashboard'),
@@ -555,6 +677,13 @@ export const adminApi = {
       method: 'DELETE',
     }),
 
+  // Bulk Operations
+  bulkUpdatePrice: (data: BulkUpdatePriceRequest) =>
+    request<BulkUpdatePriceResponse>('/admin/products/bulk-update-price', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   // Orders
   getOrders: (status?: string) =>
     request<AdminOrderResponse[]>(`/admin/orders${status ? `?status=${status}` : ''}`),
@@ -567,5 +696,384 @@ export const adminApi = {
 
   // Customers
   getCustomers: () => request<CustomerResponse[]>('/admin/customers'),
+
+  // User Management (RBAC)
+  getUsers: () => request<UserResponse[]>('/admin/users'),
+
+  updateUserRole: (userId: string, data: UpdateUserRoleRequest) =>
+    request<UserResponse>(`/admin/users/${userId}/role`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  // Product Pricing
+  getProductPricing: (productId: string) =>
+    request<ProductPricingResponse>(`/admin/products/${productId}/pricing`),
+
+  setDimensionalPricing: (productId: string, data: SetDimensionalPricingRequest) =>
+    request<DimensionalPricingResponse>(`/admin/products/${productId}/dimensional-pricing`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  deleteDimensionalPricing: (productId: string) =>
+    request<void>(`/admin/products/${productId}/dimensional-pricing`, {
+      method: 'DELETE',
+    }),
+
+  // Pricing Tiers (Quantity-based pricing)
+  setPricingTiers: (productId: string, tiers: SetPricingTierRequest[]) =>
+    request<PricingTierResponse[]>(`/admin/products/${productId}/pricing-tiers`, {
+      method: 'POST',
+      body: JSON.stringify(tiers),
+    }),
+
+  deletePricingTiers: (productId: string) =>
+    request<void>(`/admin/products/${productId}/pricing-tiers`, {
+      method: 'DELETE',
+    }),
 };
 
+// ==================== DIMENSIONAL PRICING TYPES ====================
+
+export interface DimensionalPricingResponse {
+  id: string;
+  productId: string;
+  ratePerUnit: number;
+  unit: string; // "sqft", "sqin", "sqm", "sqcm"
+  minCharge: number;
+}
+
+export interface SetDimensionalPricingRequest {
+  ratePerUnit: number;
+  unit: string;
+  minCharge: number;
+}
+
+export interface ProductPricingResponse {
+  tiers: PricingTierResponse[] | null;
+  dimensionalPricing: DimensionalPricingResponse | null;
+  addOns: AddOnResponse[] | null;
+  rules: PricingRuleResponse[] | null;
+}
+
+export interface PricingTierResponse {
+  id: string;
+  productId: string;
+  minQty: number;
+  maxQty: number;
+  price: number;
+}
+
+export interface SetPricingTierRequest {
+  minQty: number;
+  maxQty: number;
+  price: number;
+}
+
+export interface AddOnResponse {
+  id: string;
+  productId: string;
+  name: string;
+  type: string;
+  priceModifier: number;
+  enabled: boolean;
+}
+
+export interface PricingRuleResponse {
+  id: string;
+  productId: string;
+  ruleType: string;
+  value: number;
+  description: string;
+}
+
+// ==================== ANNOUNCEMENT TYPES ====================
+
+export interface AnnouncementResponse {
+  id: string;
+  text: string;
+  linkUrl?: string;
+  isActive: boolean;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAnnouncementRequest {
+  text: string;
+  linkUrl?: string;
+  isActive?: boolean;
+  displayOrder?: number;
+}
+
+export interface UpdateAnnouncementRequest {
+  text?: string;
+  linkUrl?: string;
+  isActive?: boolean;
+  displayOrder?: number;
+}
+
+// ==================== HERO SLIDE TYPES ====================
+
+export interface HeroSlideResponse {
+  id: string;
+  heading: string;
+  subheading?: string;
+  imageUrl: string;
+  ctaText?: string;
+  ctaLink?: string;
+  isActive: boolean;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateHeroSlideRequest {
+  heading: string;
+  subheading?: string;
+  imageUrl: string;
+  ctaText?: string;
+  ctaLink?: string;
+  isActive?: boolean;
+  displayOrder?: number;
+}
+
+export interface UpdateHeroSlideRequest {
+  heading?: string;
+  subheading?: string;
+  imageUrl?: string;
+  ctaText?: string;
+  ctaLink?: string;
+  isActive?: boolean;
+  displayOrder?: number;
+}
+
+// ==================== ANNOUNCEMENT API ====================
+
+export const announcementApi = {
+  // Public: Get active announcements
+  getActive: () => request<AnnouncementResponse[]>('/announcements'),
+
+  // Admin: Get all announcements
+  getAll: () => request<AnnouncementResponse[]>('/admin/announcements'),
+
+  // Admin: Get single announcement
+  getById: (id: string) => request<AnnouncementResponse>(`/admin/announcements/${id}`),
+
+  // Admin: Create announcement
+  create: (data: CreateAnnouncementRequest) =>
+    request<AnnouncementResponse>('/admin/announcements', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Admin: Update announcement
+  update: (id: string, data: UpdateAnnouncementRequest) =>
+    request<AnnouncementResponse>(`/admin/announcements/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  // Admin: Delete announcement
+  delete: (id: string) =>
+    request<void>(`/admin/announcements/${id}`, { method: 'DELETE' }),
+};
+
+// ==================== HERO SLIDE API ====================
+
+export const heroSlideApi = {
+  // Public: Get active hero slides
+  getActive: () => request<HeroSlideResponse[]>('/hero-slides'),
+
+  // Admin: Get all hero slides
+  getAll: () => request<HeroSlideResponse[]>('/admin/hero-slides'),
+
+  // Admin: Get single hero slide
+  getById: (id: string) => request<HeroSlideResponse>(`/admin/hero-slides/${id}`),
+
+  // Admin: Create hero slide
+  create: (data: CreateHeroSlideRequest) =>
+    request<HeroSlideResponse>('/admin/hero-slides', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Admin: Update hero slide
+  update: (id: string, data: UpdateHeroSlideRequest) =>
+    request<HeroSlideResponse>(`/admin/hero-slides/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  // Admin: Delete hero slide
+  delete: (id: string) =>
+    request<void>(`/admin/hero-slides/${id}`, { method: 'DELETE' }),
+};
+
+// ==================== EMAIL API ====================
+
+export interface EmailStatusResponse {
+  configured: boolean;
+}
+
+export interface SendTestEmailRequest {
+  email: string;
+}
+
+export interface SendTestEmailResponse {
+  message: string;
+}
+
+export interface BroadcastEmailRequest {
+  subject: string;
+  content: string;
+  recipients?: string[];
+  sendToAll?: boolean;
+}
+
+export interface BroadcastEmailResponse {
+  message: string;
+  totalSent: number;
+  successCount: number;
+  failedCount: number;
+  errors?: string[];
+}
+
+export const emailApi = {
+  // Get email service status
+  getStatus: () => request<EmailStatusResponse>('/admin/email/status'),
+
+  // Send test email
+  sendTest: (data: SendTestEmailRequest) =>
+    request<SendTestEmailResponse>('/admin/email/test', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Send broadcast email
+  sendBroadcast: (data: BroadcastEmailRequest) =>
+    request<BroadcastEmailResponse>('/admin/email/broadcast', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+
+// ==================== COUPONS API ====================
+
+export interface CouponResponse {
+  id: string;
+  code: string;
+  description: string;
+  discountType: 'percentage' | 'fixed';
+  discountValue: number;
+  minOrderAmount: number;
+  maxDiscountAmount?: number;
+  usageLimit?: number;
+  usedCount: number;
+  perUserLimit: number;
+  validFrom: string;
+  validUntil?: string;
+  isActive: boolean;
+}
+
+export interface ApplyCouponRequest {
+  code: string;
+  orderAmount: number;
+}
+
+export interface CreateCouponRequest {
+  code: string;
+  description: string;
+  discountType: 'percentage' | 'fixed';
+  discountValue: number;
+  minOrderAmount: number;
+  maxDiscountAmount?: number;
+  usageLimit?: number;
+  perUserLimit: number;
+  validFrom?: Date;
+  validUntil?: Date;
+  isActive: boolean;
+}
+
+export interface CouponResponse {
+  id: string;
+  code: string;
+  description: string;
+  discountType: 'percentage' | 'fixed';
+  discountValue: number;
+  minOrderAmount: number;
+  maxDiscountAmount?: number;
+  usageLimit?: number;
+  usedCount: number;
+  perUserLimit: number;
+  validFrom: string;
+  validUntil?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApplyCouponRequest {
+  code: string;
+  orderAmount: number;
+}
+
+export interface ApplyCouponResponse {
+  coupon: CouponResponse;
+  discountAmount: number;
+  message: string;
+}
+
+export const couponsApi = {
+  getAll: () => request<CouponResponse[]>('/admin/coupons'),
+  create: (data: CreateCouponRequest) =>
+    request<CouponResponse>('/admin/coupons', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  update: (id: string, data: CreateCouponRequest) =>
+    request<CouponResponse>(`/admin/coupons/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  delete: (id: string) =>
+    request<void>(`/admin/coupons/${id}`, {
+      method: 'DELETE',
+    }),
+  apply: (data: ApplyCouponRequest) =>
+    request<ApplyCouponResponse>('/coupons/apply', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+
+// ==================== SHIPPING CONFIG API ====================
+
+export interface ShippingConfig {
+  id: string;
+  shippingFee: number;
+  freeShippingThreshold: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateShippingConfigRequest {
+  shippingFee: number;
+  freeShippingThreshold: number;
+}
+
+export const shippingConfigApi = {
+  // Public: Get shipping config
+  get: () => request<ShippingConfig>('/shipping-config'),
+
+  // Admin: Get shipping config
+  getAdmin: () => request<ShippingConfig>('/admin/shipping-config'),
+
+  // Admin: Update shipping config
+  update: (data: UpdateShippingConfigRequest) =>
+    request<ShippingConfig>('/admin/shipping-config', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+};

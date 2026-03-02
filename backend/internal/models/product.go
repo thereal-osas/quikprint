@@ -48,6 +48,7 @@ type Product struct {
 	Features         []string        `json:"features"`
 	Turnaround       string          `json:"turnaround"`
 	MinQuantity      int             `json:"minQuantity"`
+	PricingTiers     []PricingTier   `json:"pricingTiers,omitempty"`
 	CreatedAt        time.Time       `json:"createdAt"`
 	UpdatedAt        time.Time       `json:"updatedAt"`
 }
@@ -80,3 +81,16 @@ type UpdateProductRequest struct {
 	MinQuantity      *int             `json:"minQuantity"`
 }
 
+// BulkUpdatePriceRequest for updating prices of multiple products at once
+type BulkUpdatePriceRequest struct {
+	ProductIDs []uuid.UUID `json:"productIds" binding:"required,min=1"`
+	UpdateType string      `json:"updateType" binding:"required,oneof=set increase decrease percentage"`
+	Value      float64     `json:"value" binding:"required"`
+}
+
+// BulkUpdatePriceResponse returns the results of bulk price update
+type BulkUpdatePriceResponse struct {
+	UpdatedCount int      `json:"updatedCount"`
+	FailedCount  int      `json:"failedCount"`
+	FailedIDs    []string `json:"failedIds,omitempty"`
+}

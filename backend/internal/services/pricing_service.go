@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/quikprint/backend/internal/models"
@@ -76,7 +77,7 @@ func (s *PricingService) CalculatePrice(ctx context.Context, req *models.Calcula
 	}
 
 	for _, tier := range tiers {
-		if quantity >= tier.MinQty && quantity <= tier.MaxQty {
+		if quantity >= tier.MinQty && (tier.MaxQty == 0 || quantity <= tier.MaxQty) {
 			breakdown.QuantityPrice = tier.Price
 			break
 		}
@@ -126,6 +127,17 @@ func (s *PricingService) CalculatePrice(ctx context.Context, req *models.Calcula
 		_ = name
 	}
 
+	// Multiply by quantity to get total cost for all units
+	// Note: quantity is used for pricing tier selection, so final total should include all units
+	if req.Quantity > 0 {
+		breakdown.Subtotal *= float64(req.Quantity)
+		breakdown.Total *= float64(req.Quantity)
+	}
+
+	// Debug logging for pricing calculation
+	fmt.Printf("DEBUG PRICING: ProductID=%s, Quantity=%d, UnitPrice=%.2f, SetupFee=%.2f, RushFee=%.2f, FinalTotal=%.2f\n",
+		req.ProductID, req.Quantity, subtotal, breakdown.SetupFee, breakdown.RushFee, breakdown.Total)
+
 	return breakdown, nil
 }
 
@@ -161,4 +173,3 @@ func getIntFromConfig(config map[string]interface{}, key string) int {
 	}
 	return 0
 }
-

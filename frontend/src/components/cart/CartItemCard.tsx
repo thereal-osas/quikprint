@@ -1,6 +1,6 @@
 import type { CartItem } from '@/types/product';
 import { Button } from '@/components/ui/button';
-import { Trash2, Upload } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { formatPrice } from '@/lib/currency';
 
@@ -66,17 +66,14 @@ export function CartItemCard({ item }: CartItemCardProps) {
 
         {/* Actions */}
         <div className="mt-4 flex items-center gap-3">
-          <Button variant="outline" size="sm" className="text-xs">
-            <Upload className="h-3 w-3 mr-1" />
-            Upload File
-          </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => removeItem(item.id)}
             className="text-destructive hover:text-destructive hover:bg-destructive/10"
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 className="h-4 w-4 mr-1" />
+            Remove
           </Button>
         </div>
       </div>

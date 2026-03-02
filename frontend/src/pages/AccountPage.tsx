@@ -138,9 +138,6 @@ export default function AccountPage() {
                   <p className="font-medium capitalize">{user.role}</p>
                 </div>
               </div>
-              <Button variant="outline" className="mt-4">
-                Edit Profile
-              </Button>
             </div>
 
             {/* Recent orders */}
@@ -180,7 +177,7 @@ export default function AccountPage() {
                       <div>
                         <p className="font-medium text-foreground">{order.order_number}</p>
                         <p className="text-sm text-muted-foreground">
-                          {new Date(order.created_at).toLocaleDateString()}
+                          {order.created_at ? new Date(order.created_at).toLocaleDateString() : 'N/A'}
                         </p>
                       </div>
                       <div className="flex items-center gap-4">

@@ -29,17 +29,29 @@ import { toast } from 'sonner';
 import { formatPrice } from '@/lib/currency';
 import type { OrderResponse } from '@/services/api';
 
+// Standardized order statuses matching the backend
 const statusOptions = [
   { value: 'pending', label: 'Pending' },
+  { value: 'awaiting_payment', label: 'Awaiting Payment' },
+  { value: 'paid', label: 'Paid' },
   { value: 'processing', label: 'Processing' },
-  { value: 'completed', label: 'Completed' },
+  { value: 'printing', label: 'Printing' },
+  { value: 'ready', label: 'Ready' },
+  { value: 'shipped', label: 'Shipped' },
+  { value: 'delivered', label: 'Delivered' },
   { value: 'cancelled', label: 'Cancelled' },
 ];
 
+// Color mapping for all order statuses
 const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-800',
-  processing: 'bg-blue-100 text-blue-800',
-  completed: 'bg-green-100 text-green-800',
+  pending: 'bg-gray-100 text-gray-800',
+  awaiting_payment: 'bg-orange-100 text-orange-800',
+  paid: 'bg-blue-100 text-blue-800',
+  processing: 'bg-purple-100 text-purple-800',
+  printing: 'bg-indigo-100 text-indigo-800',
+  ready: 'bg-cyan-100 text-cyan-800',
+  shipped: 'bg-teal-100 text-teal-800',
+  delivered: 'bg-green-100 text-green-800',
   cancelled: 'bg-red-100 text-red-800',
 };
 
@@ -134,11 +146,11 @@ export default function AdminOrdersPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    {new Date(order.created_at).toLocaleDateString('en-NG', {
+                    {order.created_at ? new Date(order.created_at).toLocaleDateString('en-NG', {
                       day: 'numeric',
                       month: 'short',
                       year: 'numeric',
-                    })}
+                    }) : 'N/A'}
                   </TableCell>
                   <TableCell>
                     <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${statusColors[order.status] || 'bg-gray-100'}`}>
@@ -192,12 +204,12 @@ export default function AdminOrdersPage() {
                 <div>
                   <p className="text-sm text-muted-foreground">Date</p>
                   <p className="font-medium">
-                    {new Date(selectedOrder.created_at).toLocaleDateString('en-NG', {
+                    {selectedOrder.created_at ? new Date(selectedOrder.created_at).toLocaleDateString('en-NG', {
                       weekday: 'long',
                       day: 'numeric',
                       month: 'long',
                       year: 'numeric',
-                    })}
+                    }) : 'N/A'}
                   </p>
                 </div>
                 <div>

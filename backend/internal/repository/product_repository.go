@@ -13,11 +13,12 @@ import (
 )
 
 type ProductRepository struct {
-	db *pgxpool.Pool
+	db          *pgxpool.Pool
+	pricingRepo *PricingRepository
 }
 
-func NewProductRepository(db *pgxpool.Pool) *ProductRepository {
-	return &ProductRepository{db: db}
+func NewProductRepository(db *pgxpool.Pool, pricingRepo *PricingRepository) *ProductRepository {
+	return &ProductRepository{db: db, pricingRepo: pricingRepo}
 }
 
 func (r *ProductRepository) Create(ctx context.Context, product *models.Product) error {
@@ -75,7 +76,18 @@ func (r *ProductRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.
 		JOIN categories c ON c.id = p.category_id
 		WHERE p.id = $1
 	`
-	return r.scanProduct(r.db.QueryRow(ctx, query, id))
+	product, err := r.scanProduct(r.db.QueryRow(ctx, query, id))
+	if err != nil || product == nil {
+		return nil, err
+	}
+
+	// Fetch pricing tiers
+	tiers, err := r.pricingRepo.GetPricingTiers(ctx, product.ID)
+	if err == nil && tiers != nil {
+		product.PricingTiers = tiers
+	}
+
+	return product, nil
 }
 
 func (r *ProductRepository) GetBySlug(ctx context.Context, slug string) (*models.Product, error) {
@@ -87,7 +99,18 @@ func (r *ProductRepository) GetBySlug(ctx context.Context, slug string) (*models
 		JOIN categories c ON c.id = p.category_id
 		WHERE p.slug = $1
 	`
-	return r.scanProduct(r.db.QueryRow(ctx, query, slug))
+	product, err := r.scanProduct(r.db.QueryRow(ctx, query, slug))
+	if err != nil || product == nil {
+		return nil, err
+	}
+
+	// Fetch pricing tiers
+	tiers, err := r.pricingRepo.GetPricingTiers(ctx, product.ID)
+	if err == nil && tiers != nil {
+		product.PricingTiers = tiers
+	}
+
+	return product, nil
 }
 
 func (r *ProductRepository) Update(ctx context.Context, product *models.Product) error {
@@ -157,4 +180,3 @@ func (r *ProductRepository) scanProducts(rows pgx.Rows) ([]models.Product, error
 	}
 	return products, nil
 }
-

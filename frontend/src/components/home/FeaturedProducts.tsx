@@ -1,11 +1,16 @@
 import { Link } from 'react-router-dom';
-import { products } from '@/data/mockData';
+import { useProducts } from '@/hooks/useApi';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatPrice } from '@/lib/currency';
+import { getImageUrl } from '@/lib/utils';
+import { Loader2 } from 'lucide-react';
 
 export function FeaturedProducts() {
-  const featuredProducts = products.slice(0, 4);
+  const { data: productsData, isLoading } = useProducts();
+
+  // Take first 4 products as featured
+  const featuredProducts = productsData?.slice(0, 4) || [];
 
   return (
     <section className="section-padding bg-secondary/50">
@@ -24,40 +29,46 @@ export function FeaturedProducts() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {featuredProducts.map((product) => (
-            <Link
-              key={product.id}
-              to={`/product/${product.slug}`}
-              className="group card-elevated overflow-hidden"
-            >
-              <div className="aspect-[4/3] bg-muted overflow-hidden">
-                <img
-                  src={product.images[0]}
-                  alt={product.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
-              </div>
-              <div className="p-4">
-                <Badge variant="secondary" className="mb-2">
-                  {product.category}
-                </Badge>
-                <h3 className="font-semibold text-foreground mb-1 group-hover:text-primary transition-colors">
-                  {product.name}
-                </h3>
-                <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                  {product.shortDescription}
-                </p>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-lg font-bold text-primary">
-                    {formatPrice(product.basePrice)}
-                  </span>
-                  <span className="text-sm text-muted-foreground">starting</span>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {featuredProducts.map((product) => (
+              <Link
+                key={product.id}
+                to={`/product/${product.slug}`}
+                className="group card-elevated overflow-hidden"
+              >
+                <div className="aspect-[4/3] bg-muted overflow-hidden">
+                  <img
+                    src={getImageUrl(product.images?.[0])}
+                    alt={product.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
                 </div>
-              </div>
-            </Link>
-          ))}
-        </div>
+                <div className="p-4">
+                  <Badge variant="secondary" className="mb-2">
+                    {product.category || 'Product'}
+                  </Badge>
+                  <h3 className="font-semibold text-foreground mb-1 group-hover:text-primary transition-colors">
+                    {product.name}
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+                    {product.description?.substring(0, 100) || ''}
+                  </p>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-lg font-bold text-primary">
+                      {formatPrice(product.basePrice)}
+                    </span>
+                    <span className="text-sm text-muted-foreground">starting</span>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

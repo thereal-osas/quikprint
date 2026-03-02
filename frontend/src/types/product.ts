@@ -27,6 +27,7 @@ export interface Product {
   features: string[];
   turnaround: string;
   minQuantity: number;
+  pricingTiers?: PricingTier[];
 }
 
 export interface CartItem {
@@ -65,4 +66,30 @@ export interface Order {
     zip: string;
     country: string;
   };
+}
+
+export interface Coupon {
+  id: string;
+  code: string;
+  description: string;
+  discountType: 'percentage' | 'fixed';
+  discountValue: number;
+  minOrderAmount: number;
+  maxDiscountAmount?: number;
+  usageLimit?: number;
+  usedCount: number;
+  perUserLimit: number;
+  validFrom: string;
+  validUntil?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PricingTier {
+  id: string;
+  productId: string;
+  minQty: number;
+  maxQty?: number;
+  price: number;
 }

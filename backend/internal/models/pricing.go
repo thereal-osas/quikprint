@@ -30,11 +30,11 @@ type AddOn struct {
 }
 
 type PricingRule struct {
-	ID           uuid.UUID `json:"id"`
-	ProductID    uuid.UUID `json:"productId"`
-	RuleType     string    `json:"ruleType"` // minimum_charge, setup_fee, rush_fee
-	Value        float64   `json:"value"`
-	Description  string    `json:"description"`
+	ID          uuid.UUID `json:"id"`
+	ProductID   uuid.UUID `json:"productId"`
+	RuleType    string    `json:"ruleType"` // minimum_charge, setup_fee, rush_fee
+	Value       float64   `json:"value"`
+	Description string    `json:"description"`
 }
 
 type CalculatePriceRequest struct {
@@ -57,7 +57,7 @@ type PriceBreakdown struct {
 
 type CreatePricingTierRequest struct {
 	MinQty int     `json:"minQty" binding:"required"`
-	MaxQty int     `json:"maxQty" binding:"required"`
+	MaxQty int     `json:"maxQty"`
 	Price  float64 `json:"price" binding:"required"`
 }
 
@@ -67,3 +67,17 @@ type CreateDimensionalPricingRequest struct {
 	MinCharge   float64 `json:"minCharge"`
 }
 
+// ShippingConfig holds the global shipping configuration
+type ShippingConfig struct {
+	ID                    uuid.UUID `json:"id"`
+	ShippingFee           float64   `json:"shippingFee"`
+	FreeShippingThreshold float64   `json:"freeShippingThreshold"`
+	CreatedAt             string    `json:"createdAt"`
+	UpdatedAt             string    `json:"updatedAt"`
+}
+
+// UpdateShippingConfigRequest represents a request to update shipping config
+type UpdateShippingConfigRequest struct {
+	ShippingFee           float64 `json:"shippingFee" binding:"required,min=0"`
+	FreeShippingThreshold float64 `json:"freeShippingThreshold" binding:"required,min=0"`
+}

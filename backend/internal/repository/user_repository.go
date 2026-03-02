@@ -21,8 +21,8 @@ func NewUserRepository(db *pgxpool.Pool) *UserRepository {
 
 func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	query := `
-		INSERT INTO users (id, email, password_hash, first_name, last_name, phone, role, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO users (id, email, password_hash, first_name, last_name, phone, role, two_factor_enabled, two_factor_secret, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`
 	user.ID = uuid.New()
 	user.CreatedAt = time.Now()
@@ -30,20 +30,21 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 
 	_, err := r.db.Exec(ctx, query,
 		user.ID, user.Email, user.PasswordHash, user.FirstName, user.LastName,
-		user.Phone, user.Role, user.CreatedAt, user.UpdatedAt,
+		user.Phone, user.Role, user.TwoFactorEnabled, user.TwoFactorSecret, user.CreatedAt, user.UpdatedAt,
 	)
 	return err
 }
 
 func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	query := `
-		SELECT id, email, password_hash, first_name, last_name, phone, role, created_at, updated_at
+		SELECT id, email, password_hash, first_name, last_name, phone, role,
+		       COALESCE(two_factor_enabled, false), COALESCE(two_factor_secret, ''), created_at, updated_at
 		FROM users WHERE id = $1
 	`
 	var user models.User
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.FirstName, &user.LastName,
-		&user.Phone, &user.Role, &user.CreatedAt, &user.UpdatedAt,
+		&user.Phone, &user.Role, &user.TwoFactorEnabled, &user.TwoFactorSecret, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -53,13 +54,14 @@ func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Use
 
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
 	query := `
-		SELECT id, email, password_hash, first_name, last_name, phone, role, created_at, updated_at
+		SELECT id, email, password_hash, first_name, last_name, phone, role,
+		       COALESCE(two_factor_enabled, false), COALESCE(two_factor_secret, ''), created_at, updated_at
 		FROM users WHERE email = $1
 	`
 	var user models.User
 	err := r.db.QueryRow(ctx, query, email).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.FirstName, &user.LastName,
-		&user.Phone, &user.Role, &user.CreatedAt, &user.UpdatedAt,
+		&user.Phone, &user.Role, &user.TwoFactorEnabled, &user.TwoFactorSecret, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -77,9 +79,42 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	return err
 }
 
+func (r *UserRepository) UpdateRole(ctx context.Context, userID uuid.UUID, role models.UserRole) error {
+	query := `UPDATE users SET role = $2, updated_at = $3 WHERE id = $1`
+	_, err := r.db.Exec(ctx, query, userID, role, time.Now())
+	return err
+}
+
+func (r *UserRepository) GetAll(ctx context.Context) ([]models.User, error) {
+	query := `
+		SELECT id, email, password_hash, first_name, last_name, phone, role,
+		       COALESCE(two_factor_enabled, false), COALESCE(two_factor_secret, ''), created_at, updated_at
+		FROM users ORDER BY created_at DESC
+	`
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []models.User
+	for rows.Next() {
+		var user models.User
+		if err := rows.Scan(
+			&user.ID, &user.Email, &user.PasswordHash, &user.FirstName, &user.LastName,
+			&user.Phone, &user.Role, &user.TwoFactorEnabled, &user.TwoFactorSecret, &user.CreatedAt, &user.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	return users, nil
+}
+
 func (r *UserRepository) GetAllCustomers(ctx context.Context) ([]models.User, error) {
 	query := `
-		SELECT id, email, password_hash, first_name, last_name, phone, role, created_at, updated_at
+		SELECT id, email, password_hash, first_name, last_name, phone, role,
+		       COALESCE(two_factor_enabled, false), COALESCE(two_factor_secret, ''), created_at, updated_at
 		FROM users WHERE role = 'customer' ORDER BY created_at DESC
 	`
 	rows, err := r.db.Query(ctx, query)
@@ -93,7 +128,7 @@ func (r *UserRepository) GetAllCustomers(ctx context.Context) ([]models.User, er
 		var user models.User
 		if err := rows.Scan(
 			&user.ID, &user.Email, &user.PasswordHash, &user.FirstName, &user.LastName,
-			&user.Phone, &user.Role, &user.CreatedAt, &user.UpdatedAt,
+			&user.Phone, &user.Role, &user.TwoFactorEnabled, &user.TwoFactorSecret, &user.CreatedAt, &user.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -133,3 +168,82 @@ func (r *UserRepository) DeleteUserRefreshTokens(ctx context.Context, userID uui
 	return err
 }
 
+// 2FA Methods
+
+func (r *UserRepository) SetTwoFactorSecret(ctx context.Context, userID uuid.UUID, secret string) error {
+	query := `UPDATE users SET two_factor_secret = $2, updated_at = $3 WHERE id = $1`
+	_, err := r.db.Exec(ctx, query, userID, secret, time.Now())
+	return err
+}
+
+func (r *UserRepository) EnableTwoFactor(ctx context.Context, userID uuid.UUID) error {
+	query := `UPDATE users SET two_factor_enabled = true, updated_at = $2 WHERE id = $1`
+	_, err := r.db.Exec(ctx, query, userID, time.Now())
+	return err
+}
+
+func (r *UserRepository) DisableTwoFactor(ctx context.Context, userID uuid.UUID) error {
+	query := `UPDATE users SET two_factor_enabled = false, two_factor_secret = NULL, updated_at = $2 WHERE id = $1`
+	_, err := r.db.Exec(ctx, query, userID, time.Now())
+	return err
+}
+
+// TwoFactorSession represents a pending 2FA verification session
+type TwoFactorSession struct {
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	SessionToken string
+	ExpiresAt    time.Time
+	CreatedAt    time.Time
+}
+
+func (r *UserRepository) CreateTwoFactorSession(ctx context.Context, session *TwoFactorSession) error {
+	query := `
+		INSERT INTO two_factor_sessions (id, user_id, session_token, expires_at, created_at)
+		VALUES ($1, $2, $3, $4, $5)
+	`
+	session.ID = uuid.New()
+	session.CreatedAt = time.Now()
+	_, err := r.db.Exec(ctx, query, session.ID, session.UserID, session.SessionToken, session.ExpiresAt, session.CreatedAt)
+	return err
+}
+
+func (r *UserRepository) GetTwoFactorSession(ctx context.Context, token string) (*TwoFactorSession, error) {
+	query := `SELECT id, user_id, session_token, expires_at, created_at FROM two_factor_sessions WHERE session_token = $1`
+	var session TwoFactorSession
+	err := r.db.QueryRow(ctx, query, token).Scan(&session.ID, &session.UserID, &session.SessionToken, &session.ExpiresAt, &session.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	return &session, err
+}
+
+func (r *UserRepository) DeleteTwoFactorSession(ctx context.Context, token string) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM two_factor_sessions WHERE session_token = $1`, token)
+	return err
+}
+
+func (r *UserRepository) CleanupExpiredTwoFactorSessions(ctx context.Context) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM two_factor_sessions WHERE expires_at < $1`, time.Now())
+	return err
+}
+
+// GetAllCustomerEmails returns a list of all customer email addresses
+func (r *UserRepository) GetAllCustomerEmails(ctx context.Context) ([]string, error) {
+	query := `SELECT email FROM users WHERE role = 'customer' ORDER BY email`
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var emails []string
+	for rows.Next() {
+		var email string
+		if err := rows.Scan(&email); err != nil {
+			return nil, err
+		}
+		emails = append(emails, email)
+	}
+	return emails, nil
+}

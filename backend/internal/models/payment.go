@@ -32,8 +32,8 @@ type InitializePaymentRequest struct {
 }
 
 type InitializePaymentResponse struct {
-	AuthorizationURL string `json:"authorizationUrl"`
-	AccessCode       string `json:"accessCode"`
+	AuthorizationURL string `json:"authorization_url"`
+	AccessCode       string `json:"access_code"`
 	Reference        string `json:"reference"`
 }
 
@@ -44,12 +44,11 @@ type VerifyPaymentRequest struct {
 type PaystackWebhookPayload struct {
 	Event string `json:"event"`
 	Data  struct {
-		Reference string  `json:"reference"`
-		Amount    int     `json:"amount"`
-		Currency  string  `json:"currency"`
-		Status    string  `json:"status"`
-		Channel   string  `json:"channel"`
-		PaidAt    string  `json:"paid_at"`
+		Reference string `json:"reference"`
+		Amount    int    `json:"amount"`
+		Currency  string `json:"currency"`
+		Status    string `json:"status"`
+		Channel   string `json:"channel"`
+		PaidAt    string `json:"paid_at"`
 	} `json:"data"`
 }
-

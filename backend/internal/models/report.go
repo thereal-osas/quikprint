@@ -18,8 +18,7 @@ type WeeklySalesReport struct {
 }
 
 type OrdersByStatusReport struct {
-	Status     string `json:"status"`
-	OrderCount int    `json:"orderCount"`
-	TotalValue float64 `json:"totalValue"`
+	Status     string  `json:"status"`
+	OrderCount int     `json:"orderCount"`
+	TotalValue float64 `json:"totalAmount"`
 }
-

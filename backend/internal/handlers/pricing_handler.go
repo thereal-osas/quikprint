@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -119,3 +120,85 @@ func (h *PricingHandler) GetPricingRules(c *gin.Context) {
 	})
 }
 
+func (h *PricingHandler) DeleteDimensionalPricing(c *gin.Context) {
+	productID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		utils.ValidationErrorResponse(c, "Invalid product ID")
+		return
+	}
+
+	ctx := context.Background()
+	if err := h.pricingRepo.DeleteDimensionalPricing(ctx, productID); err != nil {
+		utils.ErrorResponse(c, 500, "Failed to delete dimensional pricing")
+		return
+	}
+
+	utils.SuccessMessageResponse(c, 200, "Dimensional pricing deleted successfully")
+}
+
+// SetPricingTiers replaces all pricing tiers for a product
+func (h *PricingHandler) SetPricingTiers(c *gin.Context) {
+	productID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		utils.ValidationErrorResponse(c, "Invalid product ID")
+		return
+	}
+
+	var tiers []models.CreatePricingTierRequest
+	if err := c.ShouldBindJSON(&tiers); err != nil {
+		utils.ValidationErrorResponse(c, err.Error())
+		return
+	}
+
+	// Debug logging
+	fmt.Printf("DEBUG: SetPricingTiers called for product %s with %d tiers\n", productID, len(tiers))
+	for i, tier := range tiers {
+		fmt.Printf("DEBUG: Tier %d: minQty=%d, maxQty=%d, price=%f\n", i, tier.MinQty, tier.MaxQty, tier.Price)
+	}
+
+	ctx := context.Background()
+
+	// Delete existing tiers first
+	if err := h.pricingRepo.DeletePricingTiers(ctx, productID); err != nil {
+		fmt.Printf("DEBUG: Failed to delete existing tiers: %v\n", err)
+		utils.ErrorResponse(c, 500, "Failed to clear existing pricing tiers")
+		return
+	}
+
+	// Create new tiers
+	var createdTiers []models.PricingTier
+	for _, req := range tiers {
+		tier := &models.PricingTier{
+			MinQty: req.MinQty,
+			MaxQty: req.MaxQty,
+			Price:  req.Price,
+		}
+		if err := h.pricingRepo.CreatePricingTier(ctx, productID, tier); err != nil {
+			fmt.Printf("DEBUG: Failed to create pricing tier: %v\n", err)
+			utils.ErrorResponse(c, 500, "Failed to create pricing tier")
+			return
+		}
+		createdTiers = append(createdTiers, *tier)
+		fmt.Printf("DEBUG: Successfully created tier with ID %s\n", tier.ID)
+	}
+
+	fmt.Printf("DEBUG: Successfully created %d pricing tiers\n", len(createdTiers))
+	utils.SuccessResponse(c, 201, createdTiers)
+}
+
+// DeletePricingTiers removes all pricing tiers for a product
+func (h *PricingHandler) DeletePricingTiers(c *gin.Context) {
+	productID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		utils.ValidationErrorResponse(c, "Invalid product ID")
+		return
+	}
+
+	ctx := context.Background()
+	if err := h.pricingRepo.DeletePricingTiers(ctx, productID); err != nil {
+		utils.ErrorResponse(c, 500, "Failed to delete pricing tiers")
+		return
+	}
+
+	utils.SuccessMessageResponse(c, 200, "Pricing tiers deleted successfully")
+}

@@ -43,11 +43,12 @@ type OrderItem struct {
 
 type Order struct {
 	ID              uuid.UUID       `json:"id"`
-	OrderNumber     string          `json:"orderNumber"`
-	UserID          uuid.UUID       `json:"userId"`
+	OrderNumber     string          `json:"order_number"`
+	UserID          uuid.UUID       `json:"user_id"`
 	Status          OrderStatus     `json:"status"`
 	Items           []OrderItem     `json:"items"`
 	Subtotal        float64         `json:"subtotal"`
+	Discount        float64         `json:"discount"`
 	Shipping        float64         `json:"shipping"`
 	Tax             float64         `json:"tax"`
 	Total           float64         `json:"total"`
@@ -74,7 +75,16 @@ type OrderNote struct {
 }
 
 type CreateOrderRequest struct {
-	ShippingAddress ShippingAddress `json:"shippingAddress" binding:"required"`
+	ShippingAddress ShippingAddress          `json:"shippingAddress" binding:"required"`
+	Items           []CreateOrderItemRequest `json:"items"`
+	Discount        float64                  `json:"discount"`
+}
+
+// CreateOrderItemRequest represents an item sent from the client when creating an order
+type CreateOrderItemRequest struct {
+	ProductID     uuid.UUID              `json:"productId" binding:"required"`
+	Quantity      int                    `json:"quantity" binding:"required,min=1"`
+	Configuration map[string]interface{} `json:"configuration" binding:"required"`
 }
 
 type UpdateOrderStatusRequest struct {
@@ -86,3 +96,17 @@ type AddOrderNoteRequest struct {
 	Note string `json:"note" binding:"required"`
 }
 
+// AdminOrderResponse extends Order with user info for admin views
+type AdminOrderResponse struct {
+	Order
+	UserEmail     string `json:"user_email"`
+	CustomerName  string `json:"customer_name"`
+	CustomerEmail string `json:"customer_email"`
+	AdminNotes    string `json:"admin_notes,omitempty"`
+}
+
+// UserOrderStats holds aggregated order data for a user
+type UserOrderStats struct {
+	TotalOrders int     `json:"totalOrders"`
+	TotalSpent  float64 `json:"totalSpent"`
+}

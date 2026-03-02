@@ -94,7 +94,7 @@ func (r *PricingRepository) CreatePricingTier(ctx context.Context, productID uui
 func (r *PricingRepository) CreateDimensionalPricing(ctx context.Context, productID uuid.UUID, dp *models.DimensionalPricing) error {
 	// Delete existing first
 	r.db.Exec(ctx, `DELETE FROM dimensional_pricing WHERE product_id = $1`, productID)
-	
+
 	query := `INSERT INTO dimensional_pricing (id, product_id, rate_per_unit, unit, min_charge) VALUES ($1, $2, $3, $4, $5)`
 	dp.ID = uuid.New()
 	dp.ProductID = productID
@@ -107,3 +107,7 @@ func (r *PricingRepository) DeletePricingTiers(ctx context.Context, productID uu
 	return err
 }
 
+func (r *PricingRepository) DeleteDimensionalPricing(ctx context.Context, productID uuid.UUID) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM dimensional_pricing WHERE product_id = $1`, productID)
+	return err
+}

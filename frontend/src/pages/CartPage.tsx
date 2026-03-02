@@ -1,17 +1,53 @@
 import { Link } from 'react-router-dom';
+import { useState } from 'react';
 import { Layout } from '@/components/layout/Layout';
 import { CartItemCard } from '@/components/cart/CartItemCard';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useCart } from '@/context/CartContext';
 import { ShoppingBag, ArrowRight, ArrowLeft } from 'lucide-react';
-import { formatPrice, FREE_SHIPPING_THRESHOLD } from '@/lib/currency';
+import { formatPrice } from '@/lib/currency';
+import { useApplyCoupon, useShippingConfig } from '@/hooks/useApi';
+import { toast } from 'sonner';
+import { ApiError } from '@/services/api';
 
 export default function CartPage() {
-  const { items, subtotal, clearCart } = useCart();
+  const { items, subtotal, clearCart, discountAmount, applyCoupon, clearCoupon } = useCart();
 
-  const shipping = subtotal > FREE_SHIPPING_THRESHOLD ? 0 : 5000;
-  const tax = subtotal * 0.075; // 7.5% VAT for Nigeria
-  const total = subtotal + shipping + tax;
+  const [couponCode, setCouponCode] = useState('');
+  const [couponMessage, setCouponMessage] = useState<string | null>(null);
+
+  const applyCouponMutation = useApplyCoupon();
+
+  const { data: shippingConfig } = useShippingConfig();
+
+  const shippingFee = shippingConfig?.shippingFee ?? 5000;
+  const freeShippingThreshold = shippingConfig?.freeShippingThreshold ?? 50000;
+  const shipping = subtotal > freeShippingThreshold ? 0 : shippingFee;
+  const total = subtotal - discountAmount + shipping;
+
+  const handleApplyCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!couponCode.trim() || subtotal <= 0) return;
+
+    try {
+      const result = await applyCouponMutation.mutateAsync({
+        code: couponCode.trim(),
+        orderAmount: subtotal,
+      });
+      applyCoupon(couponCode.trim(), result.discountAmount, result.message);
+      setCouponMessage(result.message);
+      toast.success(result.message || 'Coupon applied successfully');
+    } catch (error) {
+      clearCoupon();
+      setCouponMessage(null);
+      if (error instanceof ApiError) {
+        toast.error(error.message);
+      } else {
+        toast.error('Failed to apply coupon');
+      }
+    }
+  };
 
   if (items.length === 0) {
     return (
@@ -78,6 +114,12 @@ export default function CartPage() {
                   <span className="text-muted-foreground">Subtotal</span>
                   <span className="font-medium">{formatPrice(subtotal)}</span>
                 </div>
+                {discountAmount > 0 && (
+                  <div className="flex justify-between text-sm text-success">
+                    <span>Coupon discount</span>
+                    <span>-{formatPrice(discountAmount)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Shipping</span>
                   <span className="font-medium">
@@ -88,10 +130,6 @@ export default function CartPage() {
                     )}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Est. VAT (7.5%)</span>
-                  <span className="font-medium">{formatPrice(tax)}</span>
-                </div>
                 <hr className="my-3" />
                 <div className="flex justify-between text-base font-semibold">
                   <span>Total</span>
@@ -99,9 +137,35 @@ export default function CartPage() {
                 </div>
               </div>
 
-              {subtotal < FREE_SHIPPING_THRESHOLD && (
+              {/* Coupon code */}
+              <form onSubmit={handleApplyCoupon} className="mt-4 space-y-2">
+                <label className="text-sm font-medium text-foreground" htmlFor="coupon">
+                  Coupon code
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    id="coupon"
+                    placeholder="Enter coupon code"
+                    value={couponCode}
+                    onChange={(e) => setCouponCode(e.target.value)}
+                    className="h-10"
+                  />
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    disabled={applyCouponMutation.isPending || !couponCode.trim()}
+                  >
+                    {applyCouponMutation.isPending ? 'Applying...' : 'Apply'}
+                  </Button>
+                </div>
+                {discountAmount > 0 && couponMessage && (
+                  <p className="text-xs text-success">{couponMessage}</p>
+                )}
+              </form>
+
+              {subtotal < freeShippingThreshold && (
                 <p className="text-xs text-muted-foreground mt-4 p-3 bg-muted rounded">
-                  Add {formatPrice(FREE_SHIPPING_THRESHOLD - subtotal)} more for free shipping!
+                  Add {formatPrice(freeShippingThreshold - subtotal)} more for free shipping!
                 </p>
               )}
 

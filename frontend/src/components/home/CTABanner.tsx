@@ -4,11 +4,11 @@ import { ArrowRight, Phone } from 'lucide-react';
 
 export function CTABanner() {
   return (
-    <section className="bg-accent py-12 sm:py-16">
+    <section className="bg-[#f5f5f5] py-12 sm:py-16">
       <div className="container-main">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
           <div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-accent-foreground mb-2">
+            <h2 className="text-2xl sm:text-3xl font-bold text-accent mb-2">
               Ready to Bring Your Ideas to Life?
             </h2>
             <p className="text-accent-foreground/90">

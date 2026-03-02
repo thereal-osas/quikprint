@@ -1,10 +1,18 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   useAdminProducts,
   useAdminCategories,
   useCreateProduct,
   useUpdateProduct,
   useDeleteProduct,
+  useProductPricing,
+  useSetDimensionalPricing,
+  useDeleteDimensionalPricing,
+  useSetPricingTiers,
+  useDeletePricingTiers,
+  useBulkUpdatePrice,
+  useShippingConfigAdmin,
+  useUpdateShippingConfig,
 } from '@/hooks/useApi';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,23 +40,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Pencil, Trash2, Loader2, Upload, X, PlusCircle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Loader2, Upload, X, PlusCircle, Star, Search, Filter, DollarSign, Truck } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { formatPrice } from '@/lib/currency';
 import { filesApi, type ProductResponse } from '@/services/api';
 
-// Product Option Types
-interface ProductOptionValue {
-  value: string;
-  label: string;
-  priceModifier: number;
+// Pricing Tier for quantity-based pricing
+interface PricingTierFormData {
+  minQty: string;
+  maxQty: string;
+  price: string;
 }
 
-interface ProductOption {
-  id: string;
-  name: string;
-  type: 'select' | 'radio' | 'checkbox';
-  options: ProductOptionValue[];
+// Dimensional Pricing for area-based pricing
+interface DimensionalPricingFormData {
+  ratePerUnit: string;
+  unit: 'sqft' | 'sqin' | 'sqm' | 'sqcm';
+  minCharge: string;
 }
 
 interface FormData {
@@ -61,9 +70,22 @@ interface FormData {
   turnaround: string;
   minQuantity: string;
   images: string[];
-  pricingType: 'static' | 'dynamic';
-  options: ProductOption[];
+  pricingType: 'quantity' | 'dimensional';
+  pricingTiers: PricingTierFormData[];
+  dimensionalPricing: DimensionalPricingFormData;
 }
+
+const emptyDimensionalPricing: DimensionalPricingFormData = {
+  ratePerUnit: '',
+  unit: 'sqin',
+  minCharge: '0',
+};
+
+const emptyPricingTier: PricingTierFormData = {
+  minQty: '',
+  maxQty: '',
+  price: '',
+};
 
 const emptyForm: FormData = {
   name: '',
@@ -75,15 +97,9 @@ const emptyForm: FormData = {
   turnaround: '',
   minQuantity: '1',
   images: [],
-  pricingType: 'static',
-  options: [],
-};
-
-const emptyOption: ProductOption = {
-  id: '',
-  name: '',
-  type: 'select',
-  options: [{ value: '', label: '', priceModifier: 0 }],
+  pricingType: 'quantity',
+  pricingTiers: [],
+  dimensionalPricing: emptyDimensionalPricing,
 };
 
 export default function AdminProductsPage() {
@@ -92,12 +108,169 @@ export default function AdminProductsPage() {
   const createMutation = useCreateProduct();
   const updateMutation = useUpdateProduct();
   const deleteMutation = useDeleteProduct();
+  const setDimensionalPricingMutation = useSetDimensionalPricing();
+  const deleteDimensionalPricingMutation = useDeleteDimensionalPricing();
+  const setPricingTiersMutation = useSetPricingTiers();
+  const deletePricingTiersMutation = useDeletePricingTiers();
+  const bulkUpdatePriceMutation = useBulkUpdatePrice();
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductResponse | null>(null);
   const [formData, setFormData] = useState<FormData>(emptyForm);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Bulk update state
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  const [isBulkUpdateOpen, setIsBulkUpdateOpen] = useState(false);
+  const [bulkUpdateType, setBulkUpdateType] = useState<'set' | 'increase' | 'decrease' | 'percentage'>('set');
+  const [bulkUpdateValue, setBulkUpdateValue] = useState('');
+
+  // Filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
+
+  // Shipping config state
+  const { data: shippingConfig } = useShippingConfigAdmin();
+  const updateShippingConfigMutation = useUpdateShippingConfig();
+  const [isShippingConfigOpen, setIsShippingConfigOpen] = useState(false);
+  const [shippingFee, setShippingFee] = useState('');
+  const [freeShippingThreshold, setFreeShippingThreshold] = useState('');
+
+  // Load shipping config into form when dialog opens
+  useEffect(() => {
+    if (isShippingConfigOpen && shippingConfig) {
+      setShippingFee(shippingConfig.shippingFee.toString());
+      setFreeShippingThreshold(shippingConfig.freeShippingThreshold.toString());
+    }
+  }, [isShippingConfigOpen, shippingConfig]);
+
+  // Filtered products based on search and filters
+  const filteredProducts = useMemo(() => {
+    if (!products) return [];
+
+    return products.filter((product) => {
+      // Search filter - check name and description
+      const query = searchQuery.toLowerCase().trim();
+      if (query) {
+        const matchesSearch =
+          product.name.toLowerCase().includes(query) ||
+          (product.description || '').toLowerCase().includes(query) ||
+          (product.category || '').toLowerCase().includes(query);
+        if (!matchesSearch) return false;
+      }
+
+      // Category filter
+      if (categoryFilter && categoryFilter !== 'all') {
+        if (product.categoryId !== categoryFilter) return false;
+      }
+
+      // Price range filter
+      const price = product.basePrice || 0;
+      if (minPrice && price < parseFloat(minPrice)) return false;
+      if (maxPrice && price > parseFloat(maxPrice)) return false;
+
+      return true;
+    });
+  }, [products, searchQuery, categoryFilter, minPrice, maxPrice]);
+
+  // Reset filters
+  const clearFilters = () => {
+    setSearchQuery('');
+    setCategoryFilter('all');
+    setMinPrice('');
+    setMaxPrice('');
+  };
+
+  // Check if any filter is active
+  const hasActiveFilters = searchQuery || categoryFilter !== 'all' || minPrice || maxPrice;
+
+  // Selection helpers
+  const toggleProductSelection = (productId: string) => {
+    setSelectedProducts(prev => {
+      const next = new Set(prev);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllProducts = () => {
+    if (selectedProducts.size === filteredProducts.length) {
+      setSelectedProducts(new Set());
+    } else {
+      setSelectedProducts(new Set(filteredProducts.map(p => p.id)));
+    }
+  };
+
+  const handleBulkUpdatePrice = async () => {
+    if (selectedProducts.size === 0) {
+      toast.error('Please select at least one product');
+      return;
+    }
+    const value = parseFloat(bulkUpdateValue);
+    if (isNaN(value)) {
+      toast.error('Please enter a valid number');
+      return;
+    }
+    try {
+      const result = await bulkUpdatePriceMutation.mutateAsync({
+        productIds: Array.from(selectedProducts),
+        updateType: bulkUpdateType,
+        value: value,
+      });
+      if (result.failedCount > 0) {
+        toast.warning(`Updated ${result.updatedCount} products, ${result.failedCount} failed`);
+      } else {
+        toast.success(`Successfully updated ${result.updatedCount} products`);
+      }
+      setSelectedProducts(new Set());
+      setIsBulkUpdateOpen(false);
+      setBulkUpdateValue('');
+    } catch (error) {
+      console.error('Failed to bulk update prices:', error);
+      toast.error('Failed to update prices');
+    }
+  };
+
+  // Load pricing when editing a product
+  const { data: productPricing } = useProductPricing(editingProduct?.id);
+
+  // Update form when pricing data is loaded
+  useEffect(() => {
+    if (productPricing) {
+      // Check if dimensional pricing exists
+      if (productPricing.dimensionalPricing) {
+        const dp = productPricing.dimensionalPricing;
+        setFormData(prev => ({
+          ...prev,
+          pricingType: 'dimensional',
+          dimensionalPricing: {
+            ratePerUnit: dp.ratePerUnit.toString(),
+            unit: dp.unit as 'sqft' | 'sqin' | 'sqm' | 'sqcm',
+            minCharge: dp.minCharge.toString(),
+          },
+        }));
+      }
+      // Check if pricing tiers exist
+      else if (productPricing.tiers && productPricing.tiers.length > 0) {
+        setFormData(prev => ({
+          ...prev,
+          pricingType: 'quantity',
+          pricingTiers: productPricing.tiers!.map(t => ({
+            minQty: t.minQty.toString(),
+            maxQty: t.maxQty.toString(),
+            price: t.price.toString(),
+          })),
+        }));
+      }
+    }
+  }, [productPricing]);
 
   const resetForm = () => {
     setFormData(emptyForm);
@@ -107,20 +280,37 @@ export default function AdminProductsPage() {
   // Image upload handler
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files || files.length === 0) return;
+    if (!files || files.length === 0) {
+      console.log('No files selected');
+      return;
+    }
 
+    console.log(`Uploading ${files.length} file(s)...`);
     setIsUploading(true);
     try {
-      const uploadPromises = Array.from(files).map(file => filesApi.upload(file));
+      const uploadPromises = Array.from(files).map(async (file) => {
+        console.log(`Uploading file: ${file.name}, size: ${file.size}, type: ${file.type}`);
+        return filesApi.upload(file);
+      });
       const results = await Promise.all(uploadPromises);
-      const newImageUrls = results.map(r => r.fileUrl);
+      console.log('Upload results:', results);
+
+      // Build full URL for uploaded images (backend returns relative path like /uploads/...)
+      const newImageUrls = results.map(r => {
+        // If fileUrl already contains the full URL, use it; otherwise prepend API base URL
+        const url = r.fileUrl.startsWith('http') ? r.fileUrl : `http://localhost:8080${r.fileUrl}`;
+        console.log(`Image URL: ${url}`);
+        return url;
+      });
+
       setFormData(prev => ({
         ...prev,
         images: [...prev.images, ...newImageUrls],
       }));
       toast.success(`${files.length} image(s) uploaded successfully`);
-    } catch {
-      toast.error('Failed to upload images');
+    } catch (error) {
+      console.error('Image upload error:', error);
+      toast.error('Failed to upload images. Check console for details.');
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
@@ -136,77 +326,57 @@ export default function AdminProductsPage() {
     }));
   };
 
-  // Product option handlers
-  const addOption = () => {
-    setFormData(prev => ({
-      ...prev,
-      options: [...prev.options, { ...emptyOption, id: `option-${Date.now()}` }],
-    }));
+  // Set an image as primary (move it to index 0)
+  const setPrimaryImage = (index: number) => {
+    if (index === 0) return; // Already primary
+    setFormData(prev => {
+      const newImages = [...prev.images];
+      const [selectedImage] = newImages.splice(index, 1);
+      newImages.unshift(selectedImage);
+      return { ...prev, images: newImages };
+    });
+    toast.success('Primary image updated');
   };
 
-  const removeOption = (index: number) => {
+  // Pricing tier handlers
+  const addPricingTier = useCallback(() => {
     setFormData(prev => ({
       ...prev,
-      options: prev.options.filter((_, i) => i !== index),
+      pricingTiers: [...prev.pricingTiers, { ...emptyPricingTier }],
     }));
-  };
+  }, []);
 
-  const updateOption = (index: number, field: keyof ProductOption, value: unknown) => {
+  const removePricingTier = useCallback((index: number) => {
     setFormData(prev => ({
       ...prev,
-      options: prev.options.map((opt, i) =>
-        i === index ? { ...opt, [field]: value } : opt
+      pricingTiers: prev.pricingTiers.filter((_, i) => i !== index),
+    }));
+  }, []);
+
+  const updatePricingTier = useCallback((index: number, field: keyof PricingTierFormData, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      pricingTiers: prev.pricingTiers.map((tier, i) =>
+        i === index ? { ...tier, [field]: value } : tier
       ),
     }));
-  };
-
-  const addOptionValue = (optionIndex: number) => {
-    setFormData(prev => ({
-      ...prev,
-      options: prev.options.map((opt, i) =>
-        i === optionIndex
-          ? { ...opt, options: [...opt.options, { value: '', label: '', priceModifier: 0 }] }
-          : opt
-      ),
-    }));
-  };
-
-  const removeOptionValue = (optionIndex: number, valueIndex: number) => {
-    setFormData(prev => ({
-      ...prev,
-      options: prev.options.map((opt, i) =>
-        i === optionIndex
-          ? { ...opt, options: opt.options.filter((_, vi) => vi !== valueIndex) }
-          : opt
-      ),
-    }));
-  };
-
-  const updateOptionValue = (
-    optionIndex: number,
-    valueIndex: number,
-    field: keyof ProductOptionValue,
-    value: string | number
-  ) => {
-    setFormData(prev => ({
-      ...prev,
-      options: prev.options.map((opt, i) =>
-        i === optionIndex
-          ? {
-              ...opt,
-              options: opt.options.map((val, vi) =>
-                vi === valueIndex ? { ...val, [field]: value } : val
-              ),
-            }
-          : opt
-      ),
-    }));
-  };
+  }, []);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Log form data for debugging
+    console.log('Creating product with form data:', {
+      name: formData.name,
+      slug: formData.slug,
+      categoryId: formData.categoryId,
+      basePrice: formData.basePrice,
+      images: formData.images,
+      pricingType: formData.pricingType,
+    });
+
     try {
-      await createMutation.mutateAsync({
+      const productData = {
         name: formData.name,
         slug: formData.slug,
         categoryId: formData.categoryId,
@@ -216,13 +386,52 @@ export default function AdminProductsPage() {
         turnaround: formData.turnaround,
         minQuantity: parseInt(formData.minQuantity) || 1,
         images: formData.images,
-        options: formData.pricingType === 'dynamic' ? formData.options : [],
-      });
+        options: [], // No more dynamic options
+      };
+
+      console.log('Sending product data to API:', productData);
+      const product = await createMutation.mutateAsync(productData);
+      console.log('Product created successfully:', product);
+
+      // Save pricing based on type
+      if (product?.id) {
+        try {
+          if (formData.pricingType === 'dimensional') {
+            await setDimensionalPricingMutation.mutateAsync({
+              productId: product.id,
+              data: {
+                ratePerUnit: parseFloat(formData.dimensionalPricing.ratePerUnit) || 0,
+                unit: formData.dimensionalPricing.unit,
+                minCharge: parseFloat(formData.dimensionalPricing.minCharge) || 0,
+              },
+            });
+          } else if (formData.pricingType === 'quantity' && formData.pricingTiers.length > 0) {
+            // Filter out empty tiers and validate required fields
+            // Note: maxQty can be empty for unlimited tiers (e.g., "50+")
+            const validTiers = formData.pricingTiers
+              .filter(t => t.minQty && t.price)
+              .map(t => ({
+                minQty: parseInt(t.minQty) || 0,
+                maxQty: t.maxQty ? parseInt(t.maxQty) : 0, // 0 means unlimited
+                price: parseFloat(t.price) || 0,
+              }));
+            
+            if (validTiers.length > 0) {
+              await setPricingTiersMutation.mutateAsync({ productId: product.id, tiers: validTiers });
+            }
+          }
+        } catch (pricingError) {
+          console.error('Failed to set pricing:', pricingError);
+          toast.error('Product created but failed to set pricing. Please update pricing manually.');
+        }
+      }
+
       toast.success('Product created successfully');
       setIsCreateOpen(false);
       resetForm();
-    } catch {
-      toast.error('Failed to create product');
+    } catch (error) {
+      console.error('Failed to create product:', error);
+      toast.error('Failed to create product. Check console for details.');
     }
   };
 
@@ -242,9 +451,53 @@ export default function AdminProductsPage() {
           turnaround: formData.turnaround,
           minQuantity: parseInt(formData.minQuantity) || 1,
           images: formData.images,
-          options: formData.pricingType === 'dynamic' ? formData.options : [],
+          options: [], // No more dynamic options
         },
       });
+
+      // Handle pricing based on type
+      try {
+        if (formData.pricingType === 'dimensional') {
+          // Set dimensional pricing
+          await setDimensionalPricingMutation.mutateAsync({
+            productId: editingProduct.id,
+            data: {
+              ratePerUnit: parseFloat(formData.dimensionalPricing.ratePerUnit) || 0,
+              unit: formData.dimensionalPricing.unit,
+              minCharge: parseFloat(formData.dimensionalPricing.minCharge) || 0,
+            },
+          });
+          // Clear pricing tiers if they existed
+          if (productPricing?.tiers && productPricing.tiers.length > 0) {
+            await deletePricingTiersMutation.mutateAsync(editingProduct.id);
+          }
+        } else if (formData.pricingType === 'quantity') {
+          // Set pricing tiers
+          if (formData.pricingTiers.length > 0) {
+            // Filter out empty tiers and validate required fields
+            // Note: maxQty can be empty for unlimited tiers (e.g., "50+")
+            const validTiers = formData.pricingTiers
+              .filter(t => t.minQty && t.price)
+              .map(t => ({
+                minQty: parseInt(t.minQty) || 0,
+                maxQty: t.maxQty ? parseInt(t.maxQty) : 0, // 0 means unlimited
+                price: parseFloat(t.price) || 0,
+              }));
+            
+            if (validTiers.length > 0) {
+              await setPricingTiersMutation.mutateAsync({ productId: editingProduct.id, tiers: validTiers });
+            }
+          }
+          // Clear dimensional pricing if it existed
+          if (productPricing?.dimensionalPricing) {
+            await deleteDimensionalPricingMutation.mutateAsync(editingProduct.id);
+          }
+        }
+      } catch (pricingError) {
+        console.error('Failed to update pricing:', pricingError);
+        toast.error('Product updated but failed to set pricing. Please update pricing manually.');
+      }
+
       toast.success('Product updated successfully');
       setEditingProduct(null);
       resetForm();
@@ -265,19 +518,20 @@ export default function AdminProductsPage() {
 
   const openEdit = (product: ProductResponse) => {
     setEditingProduct(product);
-    const hasOptions = product.options && Array.isArray(product.options) && product.options.length > 0;
+    // Default to quantity pricing; will be updated by useEffect when pricing data loads
     setFormData({
       name: product.name,
       slug: product.slug,
-      categoryId: product.category_id,
+      categoryId: product.categoryId,
       description: product.description || '',
-      shortDescription: '',
-      basePrice: product.base_price?.toString() || '0',
-      turnaround: '',
-      minQuantity: '1',
+      shortDescription: product.shortDescription || '',
+      basePrice: product.basePrice?.toString() || '0',
+      turnaround: product.turnaround || '',
+      minQuantity: product.minQuantity?.toString() || '1',
       images: product.images || [],
-      pricingType: hasOptions ? 'dynamic' : 'static',
-      options: hasOptions ? (product.options as ProductOption[]) : [],
+      pricingType: 'quantity',
+      pricingTiers: [],
+      dimensionalPricing: emptyDimensionalPricing, // Will be loaded from API
     });
   };
 
@@ -289,7 +543,9 @@ export default function AdminProductsPage() {
     );
   }
 
-  const ProductForm = ({ onSubmit, isEdit = false, isPending = false }: { onSubmit: (e: React.FormEvent) => void; isEdit?: boolean; isPending?: boolean }) => (
+  // Helper to render the form - using a function that returns JSX instead of a component
+  // to avoid focus loss issues caused by component recreation on each render
+  const renderProductForm = (isEdit: boolean, onSubmit: (e: React.FormEvent) => void, isPending: boolean) => (
     <form onSubmit={onSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
       {/* Basic Info */}
       <div className="grid grid-cols-2 gap-4">
@@ -298,7 +554,7 @@ export default function AdminProductsPage() {
           <Input
             id={isEdit ? 'edit-name' : 'name'}
             value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
             required
           />
         </div>
@@ -307,7 +563,7 @@ export default function AdminProductsPage() {
           <Input
             id={isEdit ? 'edit-slug' : 'slug'}
             value={formData.slug}
-            onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+            onChange={(e) => setFormData(prev => ({ ...prev, slug: e.target.value }))}
             required
           />
         </div>
@@ -317,7 +573,7 @@ export default function AdminProductsPage() {
           <Label htmlFor={isEdit ? 'edit-category' : 'category'}>Category</Label>
           <Select
             value={formData.categoryId}
-            onValueChange={(value) => setFormData({ ...formData, categoryId: value })}
+            onValueChange={(value) => setFormData(prev => ({ ...prev, categoryId: value }))}
           >
             <SelectTrigger>
               <SelectValue placeholder="Select category" />
@@ -338,7 +594,7 @@ export default function AdminProductsPage() {
             type="number"
             step="0.01"
             value={formData.basePrice}
-            onChange={(e) => setFormData({ ...formData, basePrice: e.target.value })}
+            onChange={(e) => setFormData(prev => ({ ...prev, basePrice: e.target.value }))}
             required
           />
         </div>
@@ -347,14 +603,39 @@ export default function AdminProductsPage() {
       {/* Image Upload Section */}
       <div className="border border-border rounded-lg p-4 space-y-3">
         <Label className="text-base font-semibold">Product Images</Label>
+        <p className="text-xs text-muted-foreground">First image is the primary/thumbnail image. Click the star to set as primary.</p>
         <div className="flex flex-wrap gap-2">
           {formData.images.map((img, index) => (
-            <div key={index} className="relative group w-20 h-20 border border-border rounded overflow-hidden">
+            <div
+              key={index}
+              className={`relative group w-20 h-20 border-2 rounded overflow-hidden ${
+                index === 0 ? 'border-primary ring-2 ring-primary/20' : 'border-border'
+              }`}
+            >
               <img src={img} alt={`Product ${index + 1}`} className="w-full h-full object-cover" />
+              {/* Primary indicator */}
+              {index === 0 && (
+                <div className="absolute top-0 left-0 bg-primary text-primary-foreground p-0.5">
+                  <Star className="h-3 w-3 fill-current" />
+                </div>
+              )}
+              {/* Set as primary button (shown on hover for non-primary images) */}
+              {index !== 0 && (
+                <button
+                  type="button"
+                  onClick={() => setPrimaryImage(index)}
+                  className="absolute top-0 left-0 bg-muted text-muted-foreground p-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-primary hover:text-primary-foreground"
+                  title="Set as primary image"
+                >
+                  <Star className="h-3 w-3" />
+                </button>
+              )}
+              {/* Remove button */}
               <button
                 type="button"
                 onClick={() => removeImage(index)}
-                className="absolute top-0 right-0 bg-destructive text-destructive-foreground p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute top-0 right-0 bg-destructive text-destructive-foreground p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Remove image"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -376,7 +657,6 @@ export default function AdminProductsPage() {
             )}
           </label>
         </div>
-        <p className="text-xs text-muted-foreground">Click to upload product images (PNG, JPG)</p>
       </div>
 
       {/* Short Description */}
@@ -385,7 +665,7 @@ export default function AdminProductsPage() {
         <Input
           id={isEdit ? 'edit-short-desc' : 'short-desc'}
           value={formData.shortDescription}
-          onChange={(e) => setFormData({ ...formData, shortDescription: e.target.value })}
+          onChange={(e) => setFormData(prev => ({ ...prev, shortDescription: e.target.value }))}
         />
       </div>
       <div>
@@ -393,7 +673,7 @@ export default function AdminProductsPage() {
         <Textarea
           id={isEdit ? 'edit-desc' : 'desc'}
           value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
           rows={3}
         />
       </div>
@@ -403,7 +683,7 @@ export default function AdminProductsPage() {
           <Input
             id={isEdit ? 'edit-turnaround' : 'turnaround'}
             value={formData.turnaround}
-            onChange={(e) => setFormData({ ...formData, turnaround: e.target.value })}
+            onChange={(e) => setFormData(prev => ({ ...prev, turnaround: e.target.value }))}
             placeholder="e.g., 3-5 business days"
           />
         </div>
@@ -413,7 +693,7 @@ export default function AdminProductsPage() {
             id={isEdit ? 'edit-min-qty' : 'min-qty'}
             type="number"
             value={formData.minQuantity}
-            onChange={(e) => setFormData({ ...formData, minQuantity: e.target.value })}
+            onChange={(e) => setFormData(prev => ({ ...prev, minQuantity: e.target.value }))}
           />
         </div>
       </div>
@@ -425,137 +705,156 @@ export default function AdminProductsPage() {
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="radio"
-              name="pricingType"
-              value="static"
-              checked={formData.pricingType === 'static'}
-              onChange={() => setFormData({ ...formData, pricingType: 'static', options: [] })}
+              name={`pricingType-${isEdit ? 'edit' : 'create'}`}
+              value="quantity"
+              checked={formData.pricingType === 'quantity'}
+              onChange={() => setFormData(prev => ({ ...prev, pricingType: 'quantity' }))}
               className="w-4 h-4"
             />
-            <span className="text-sm">Static Price</span>
+            <span className="text-sm">Quantity-Based Pricing</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="radio"
-              name="pricingType"
-              value="dynamic"
-              checked={formData.pricingType === 'dynamic'}
-              onChange={() => setFormData({ ...formData, pricingType: 'dynamic' })}
+              name={`pricingType-${isEdit ? 'edit' : 'create'}`}
+              value="dimensional"
+              checked={formData.pricingType === 'dimensional'}
+              onChange={() => setFormData(prev => ({ ...prev, pricingType: 'dimensional' }))}
               className="w-4 h-4"
             />
-            <span className="text-sm">Dynamic Pricing (with options)</span>
+            <span className="text-sm">Dimensional-Based Pricing</span>
           </label>
         </div>
         <p className="text-xs text-muted-foreground">
-          {formData.pricingType === 'static'
-            ? 'Product has a fixed base price with no configurable options.'
-            : 'Product price varies based on customer-selected options (e.g., paper type, quantity, finish).'}
+          {formData.pricingType === 'quantity'
+            ? 'Product price varies based on quantity ordered (e.g., 100 pcs = ₦5,000, 500 pcs = ₦20,000).'
+            : 'Product price calculated based on dimensions (width × height × rate per unit).'}
         </p>
       </div>
 
-      {/* Dynamic Pricing Options */}
-      {formData.pricingType === 'dynamic' && (
+      {/* Quantity-Based Pricing Tiers */}
+      {formData.pricingType === 'quantity' && (
         <div className="border border-border rounded-lg p-4 space-y-4">
           <div className="flex items-center justify-between">
-            <Label className="text-base font-semibold">Product Options (Price Modifiers)</Label>
-            <Button type="button" variant="outline" size="sm" onClick={addOption}>
-              <PlusCircle className="h-4 w-4 mr-1" /> Add Option
+            <Label className="text-base font-semibold">Pricing Tiers</Label>
+            <Button type="button" variant="outline" size="sm" onClick={addPricingTier}>
+              <PlusCircle className="h-4 w-4 mr-1" /> Add Tier
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground">
+            Define quantity tiers with corresponding prices. The base price above will be used as the default price.
+          </p>
 
-          {formData.options.length === 0 && (
+          {formData.pricingTiers.length === 0 && (
             <p className="text-sm text-muted-foreground italic">
-              No options configured. Click "Add Option" to create pricing options like paper type, quantity tiers, or finishes.
+              No pricing tiers configured. Click "Add Tier" to create quantity-based pricing.
             </p>
           )}
 
-          {formData.options.map((option, optIndex) => (
-            <div key={option.id || optIndex} className="border border-muted rounded-lg p-3 space-y-3 bg-muted/20">
-              <div className="flex items-start gap-2">
-                <div className="flex-1 grid grid-cols-3 gap-2">
-                  <div>
-                    <Label className="text-xs">Option ID</Label>
-                    <Input
-                      value={option.id}
-                      onChange={(e) => updateOption(optIndex, 'id', e.target.value)}
-                      placeholder="e.g., paper"
-                      className="h-8 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Option Name</Label>
-                    <Input
-                      value={option.name}
-                      onChange={(e) => updateOption(optIndex, 'name', e.target.value)}
-                      placeholder="e.g., Paper Stock"
-                      className="h-8 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Type</Label>
-                    <Select
-                      value={option.type}
-                      onValueChange={(value) => updateOption(optIndex, 'type', value)}
-                    >
-                      <SelectTrigger className="h-8 text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="select">Select</SelectItem>
-                        <SelectItem value="radio">Radio</SelectItem>
-                        <SelectItem value="checkbox">Checkbox</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <Button type="button" variant="ghost" size="icon" onClick={() => removeOption(optIndex)} className="h-8 w-8 text-destructive">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+          {formData.pricingTiers.map((tier, tierIndex) => (
+            <div key={tierIndex} className="grid grid-cols-4 gap-2 items-end">
+              <div>
+                <Label className="text-xs">Min Quantity</Label>
+                <Input
+                  type="number"
+                  value={tier.minQty}
+                  onChange={(e) => updatePricingTier(tierIndex, 'minQty', e.target.value)}
+                  placeholder="e.g., 100"
+                  className="h-9"
+                />
               </div>
-
-              {/* Option Values */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs text-muted-foreground">Values</Label>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => addOptionValue(optIndex)} className="h-6 text-xs">
-                    + Add Value
-                  </Button>
-                </div>
-                {option.options.map((val, valIndex) => (
-                  <div key={valIndex} className="grid grid-cols-4 gap-2 items-center">
-                    <Input
-                      value={val.value}
-                      onChange={(e) => updateOptionValue(optIndex, valIndex, 'value', e.target.value)}
-                      placeholder="Value (e.g., 300gsm)"
-                      className="h-7 text-xs"
-                    />
-                    <Input
-                      value={val.label}
-                      onChange={(e) => updateOptionValue(optIndex, valIndex, 'label', e.target.value)}
-                      placeholder="Label (e.g., 300gsm Cardstock)"
-                      className="h-7 text-xs"
-                    />
-                    <Input
-                      type="number"
-                      value={val.priceModifier}
-                      onChange={(e) => updateOptionValue(optIndex, valIndex, 'priceModifier', parseFloat(e.target.value) || 0)}
-                      placeholder="Price modifier (₦)"
-                      className="h-7 text-xs"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeOptionValue(optIndex, valIndex)}
-                      className="h-7 w-7 text-destructive"
-                      disabled={option.options.length <= 1}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ))}
+              <div>
+                <Label className="text-xs">Max Quantity</Label>
+                <Input
+                  type="number"
+                  value={tier.maxQty}
+                  onChange={(e) => updatePricingTier(tierIndex, 'maxQty', e.target.value)}
+                  placeholder="e.g., 499"
+                  className="h-9"
+                />
               </div>
+              <div>
+                <Label className="text-xs">Price (₦)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={tier.price}
+                  onChange={(e) => updatePricingTier(tierIndex, 'price', e.target.value)}
+                  placeholder="e.g., 5000"
+                  className="h-9"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => removePricingTier(tierIndex)}
+                className="h-9 w-9 text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Dimensional Pricing Section */}
+      {formData.pricingType === 'dimensional' && (
+        <div className="border border-border rounded-lg p-4 space-y-4">
+          <Label className="text-base font-semibold">Dimensional Pricing Configuration</Label>
+          <p className="text-xs text-muted-foreground">
+            Configure pricing based on area (width × height) for products like banners, posters, or signage.
+          </p>
+          <div className="grid grid-cols-3 gap-4 pt-2">
+            <div>
+              <Label htmlFor={`rate-per-unit-${isEdit ? 'edit' : 'create'}`} className="text-xs">Rate per Unit (₦)</Label>
+              <Input
+                id={`rate-per-unit-${isEdit ? 'edit' : 'create'}`}
+                type="number"
+                step="0.01"
+                value={formData.dimensionalPricing.ratePerUnit}
+                onChange={(e) => setFormData(prev => ({
+                  ...prev,
+                  dimensionalPricing: { ...prev.dimensionalPricing, ratePerUnit: e.target.value },
+                }))}
+                placeholder="e.g., 50"
+              />
+            </div>
+            <div>
+              <Label htmlFor={`pricing-unit-${isEdit ? 'edit' : 'create'}`} className="text-xs">Unit</Label>
+              <Select
+                value={formData.dimensionalPricing.unit}
+                onValueChange={(value) => setFormData(prev => ({
+                  ...prev,
+                  dimensionalPricing: { ...prev.dimensionalPricing, unit: value as 'sqft' | 'sqin' | 'sqm' | 'sqcm' },
+                }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sqin">Square Inches (sqin)</SelectItem>
+                  <SelectItem value="sqft">Square Feet (sqft)</SelectItem>
+                  <SelectItem value="sqcm">Square Centimeters (sqcm)</SelectItem>
+                  <SelectItem value="sqm">Square Meters (sqm)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor={`min-charge-${isEdit ? 'edit' : 'create'}`} className="text-xs">Minimum Charge (₦)</Label>
+              <Input
+                id={`min-charge-${isEdit ? 'edit' : 'create'}`}
+                type="number"
+                step="0.01"
+                value={formData.dimensionalPricing.minCharge}
+                onChange={(e) => setFormData(prev => ({
+                  ...prev,
+                  dimensionalPricing: { ...prev.dimensionalPricing, minCharge: e.target.value },
+                }))}
+                placeholder="e.g., 500"
+              />
+            </div>
+          </div>
         </div>
       )}
 
@@ -572,20 +871,149 @@ export default function AdminProductsPage() {
           <h1 className="text-2xl font-bold text-foreground">Products</h1>
           <p className="text-muted-foreground">Manage your products</p>
         </div>
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={resetForm}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Product
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Create Product</DialogTitle>
-            </DialogHeader>
-            <ProductForm onSubmit={handleCreate} isPending={createMutation.isPending} />
-          </DialogContent>
-        </Dialog>
+        <div className="flex items-center gap-2">
+          {/* Shipping Config Button */}
+          <Dialog open={isShippingConfigOpen} onOpenChange={setIsShippingConfigOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Truck className="h-4 w-4 mr-2" />
+                Shipping Settings
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Shipping Configuration</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="shippingFee">Standard Shipping Fee (₦)</Label>
+                  <Input
+                    id="shippingFee"
+                    type="number"
+                    value={shippingFee}
+                    onChange={(e) => setShippingFee(e.target.value)}
+                    placeholder="5000"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Amount charged for orders below the free shipping threshold
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="freeThreshold">Free Shipping Threshold (₦)</Label>
+                  <Input
+                    id="freeThreshold"
+                    type="number"
+                    value={freeShippingThreshold}
+                    onChange={(e) => setFreeShippingThreshold(e.target.value)}
+                    placeholder="50000"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Orders above this amount get free shipping
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setIsShippingConfigOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={async () => {
+                    try {
+                      await updateShippingConfigMutation.mutateAsync({
+                        shippingFee: parseFloat(shippingFee) || 0,
+                        freeShippingThreshold: parseFloat(freeShippingThreshold) || 0,
+                      });
+                      toast.success('Shipping configuration updated');
+                      setIsShippingConfigOpen(false);
+                    } catch {
+                      toast.error('Failed to update shipping configuration');
+                    }
+                  }}
+                  disabled={updateShippingConfigMutation.isPending}
+                >
+                  {updateShippingConfigMutation.isPending ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Bulk Update Price Button */}
+          {selectedProducts.size > 0 && (
+            <Dialog open={isBulkUpdateOpen} onOpenChange={setIsBulkUpdateOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <DollarSign className="h-4 w-4 mr-2" />
+                  Update Price ({selectedProducts.size})
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Bulk Update Prices</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <p className="text-sm text-muted-foreground">
+                    Update prices for {selectedProducts.size} selected product{selectedProducts.size > 1 ? 's' : ''}
+                  </p>
+
+                  <div className="space-y-2">
+                    <Label>Update Type</Label>
+                    <Select value={bulkUpdateType} onValueChange={(v) => setBulkUpdateType(v as typeof bulkUpdateType)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="set">Set exact price</SelectItem>
+                        <SelectItem value="increase">Increase by amount</SelectItem>
+                        <SelectItem value="decrease">Decrease by amount</SelectItem>
+                        <SelectItem value="percentage">Adjust by percentage</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>
+                      {bulkUpdateType === 'set' && 'New Price (₦)'}
+                      {bulkUpdateType === 'increase' && 'Increase Amount (₦)'}
+                      {bulkUpdateType === 'decrease' && 'Decrease Amount (₦)'}
+                      {bulkUpdateType === 'percentage' && 'Percentage (use negative for decrease)'}
+                    </Label>
+                    <Input
+                      type="number"
+                      step={bulkUpdateType === 'percentage' ? '0.1' : '0.01'}
+                      value={bulkUpdateValue}
+                      onChange={(e) => setBulkUpdateValue(e.target.value)}
+                      placeholder={bulkUpdateType === 'percentage' ? 'e.g., 10 for +10% or -10 for -10%' : '0.00'}
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-4">
+                    <Button variant="outline" onClick={() => setIsBulkUpdateOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleBulkUpdatePrice} disabled={bulkUpdatePriceMutation.isPending}>
+                      {bulkUpdatePriceMutation.isPending ? 'Updating...' : 'Update Prices'}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+
+          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={resetForm}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Product
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Create Product</DialogTitle>
+              </DialogHeader>
+              {renderProductForm(false, handleCreate, createMutation.isPending)}
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Edit Dialog */}
@@ -594,15 +1022,94 @@ export default function AdminProductsPage() {
           <DialogHeader>
             <DialogTitle>Edit Product</DialogTitle>
           </DialogHeader>
-          <ProductForm onSubmit={handleUpdate} isEdit isPending={updateMutation.isPending} />
+          {renderProductForm(true, handleUpdate, updateMutation.isPending)}
         </DialogContent>
       </Dialog>
+
+      {/* Filter Section */}
+      <div className="bg-card border border-border rounded-lg p-4">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium text-foreground">Filters</span>
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="ml-auto h-8 px-2">
+                <X className="h-4 w-4 mr-1" />
+                Clear Filters
+              </Button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search products..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+
+            {/* Category Filter */}
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="All Categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {categories?.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Min Price */}
+            <div>
+              <Input
+                type="number"
+                placeholder="Min Price (₦)"
+                value={minPrice}
+                onChange={(e) => setMinPrice(e.target.value)}
+                min="0"
+                step="0.01"
+              />
+            </div>
+
+            {/* Max Price */}
+            <div>
+              <Input
+                type="number"
+                placeholder="Max Price (₦)"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(e.target.value)}
+                min="0"
+                step="0.01"
+              />
+            </div>
+          </div>
+
+          {/* Results count */}
+          <div className="text-sm text-muted-foreground">
+            Showing {filteredProducts.length} of {products?.length || 0} products
+          </div>
+        </div>
+      </div>
 
       {/* Products Table */}
       <div className="bg-card border border-border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[50px]">
+                <Checkbox
+                  checked={filteredProducts.length > 0 && selectedProducts.size === filteredProducts.length}
+                  onCheckedChange={toggleAllProducts}
+                  aria-label="Select all products"
+                />
+              </TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Category</TableHead>
               <TableHead>Base Price</TableHead>
@@ -610,12 +1117,19 @@ export default function AdminProductsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {products && products.length > 0 ? (
-              products.map((product) => (
-                <TableRow key={product.id}>
+            {filteredProducts.length > 0 ? (
+              filteredProducts.map((product) => (
+                <TableRow key={product.id} className={selectedProducts.has(product.id) ? 'bg-muted/50' : ''}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedProducts.has(product.id)}
+                      onCheckedChange={() => toggleProductSelection(product.id)}
+                      aria-label={`Select ${product.name}`}
+                    />
+                  </TableCell>
                   <TableCell className="font-medium">{product.name}</TableCell>
-                  <TableCell>{product.category_name || '-'}</TableCell>
-                  <TableCell>{formatPrice(product.base_price)}</TableCell>
+                  <TableCell>{product.category || '-'}</TableCell>
+                  <TableCell>{formatPrice(product.basePrice)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <Button variant="ghost" size="icon" onClick={() => openEdit(product)}>
@@ -635,8 +1149,8 @@ export default function AdminProductsPage() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                  No products found
+                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                  {hasActiveFilters ? 'No products match your filters' : 'No products found'}
                 </TableCell>
               </TableRow>
             )}

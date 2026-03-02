@@ -21,6 +21,8 @@ import FAQPage from "./pages/FAQPage";
 import TermsPage from "./pages/TermsPage.tsx";
 import PrivacyPage from "./pages/PrivacyPage";
 import NotFound from "./pages/NotFound.tsx";
+import PaymentCallbackPage from "./pages/PaymentCallbackPage";
+import UserOrdersPage from "./pages/UserOrdersPage";
 
 // Admin pages
 import AdminLayout from "./components/admin/AdminLayout";
@@ -30,6 +32,12 @@ import AdminProductsPage from "./pages/admin/AdminProductsPage";
 import AdminOrdersPage from "./pages/admin/AdminOrdersPage";
 import AdminCustomersPage from "./pages/admin/AdminCustomersPage";
 import AdminReportsPage from "./pages/admin/AdminReportsPage";
+import AdminAnnouncementsPage from "./pages/admin/AdminAnnouncementsPage";
+import AdminHeroSlidesPage from "./pages/admin/AdminHeroSlidesPage";
+import AdminUsersPage from "./pages/admin/AdminUsersPage";
+import AdminSecurityPage from "./pages/admin/AdminSecurityPage";
+import AdminEmailPage from "./pages/admin/AdminEmailPage";
+import AdminCouponsPage from "./pages/admin/AdminCouponsPage";
 
 const queryClient = new QueryClient();
 
@@ -48,11 +56,12 @@ const App = () => (
             <Route path="/product/:slug" element={<ProductDetailPage />} />
             <Route path="/cart" element={<CartPage />} />
             <Route path="/checkout" element={<CheckoutPage />} />
+            <Route path="/checkout/callback" element={<PaymentCallbackPage />} />
             <Route path="/order-success" element={<OrderSuccessPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/account" element={<AccountPage />} />
-            <Route path="/account/orders" element={<AccountPage />} />
+            <Route path="/account/orders" element={<UserOrdersPage />} />
             <Route path="/contact" element={<ContactPage />} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/faq" element={<FAQPage />} />
@@ -67,6 +76,12 @@ const App = () => (
               <Route path="orders" element={<AdminOrdersPage />} />
               <Route path="customers" element={<AdminCustomersPage />} />
               <Route path="reports" element={<AdminReportsPage />} />
+              <Route path="announcements" element={<AdminAnnouncementsPage />} />
+              <Route path="hero-slides" element={<AdminHeroSlidesPage />} />
+              <Route path="users" element={<AdminUsersPage />} />
+              <Route path="security" element={<AdminSecurityPage />} />
+              <Route path="email" element={<AdminEmailPage />} />
+              <Route path="coupons" element={<AdminCouponsPage />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

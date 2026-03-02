@@ -14,6 +14,12 @@ import {
   Loader2,
   Menu,
   X,
+  Megaphone,
+  ImageIcon,
+  ShieldCheck,
+  Lock,
+  Mail,
+  Ticket,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
@@ -24,8 +30,14 @@ const sidebarLinks = [
   { href: '/admin/categories', label: 'Categories', icon: FolderTree },
   { href: '/admin/products', label: 'Products', icon: Package },
   { href: '/admin/orders', label: 'Orders', icon: ShoppingCart },
+  { href: '/admin/coupons', label: 'Coupons', icon: Ticket },
   { href: '/admin/customers', label: 'Customers', icon: Users },
+  { href: '/admin/users', label: 'User Roles', icon: ShieldCheck },
   { href: '/admin/reports', label: 'Reports', icon: BarChart3 },
+  { href: '/admin/announcements', label: 'Announcements', icon: Megaphone },
+  { href: '/admin/hero-slides', label: 'Hero Slides', icon: ImageIcon },
+  { href: '/admin/security', label: 'Security (2FA)', icon: Lock },
+  { href: '/admin/email', label: 'Email', icon: Mail },
 ];
 
 export default function AdminLayout() {
@@ -59,8 +71,8 @@ export default function AdminLayout() {
       return;
     }
 
-    // Check if user is admin
-    if (user && user.role !== 'admin') {
+    // Check if user is admin or manager
+    if (user && user.role !== 'admin' && user.role !== 'manager') {
       navigate('/account');
     }
   }, [user, error, navigate]);
@@ -73,9 +85,18 @@ export default function AdminLayout() {
     );
   }
 
-  if (!user || user.role !== 'admin') {
+  if (!user || (user.role !== 'admin' && user.role !== 'manager')) {
     return null;
   }
+
+  // Filter sidebar links based on user role
+  const visibleLinks = sidebarLinks.filter((link) => {
+    // Hide User Roles and Security (2FA) for managers
+    if (user.role === 'manager') {
+      return link.href !== '/admin/users' && link.href !== '/admin/security';
+    }
+    return true;
+  });
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -109,8 +130,8 @@ export default function AdminLayout() {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 p-4 space-y-1 mt-16 lg:mt-0">
-            {sidebarLinks.map((link) => {
+          <nav className="flex-1 p-4 space-y-1 mt-16 lg:mt-0 overflow-y-auto">
+            {visibleLinks.map((link) => {
               const isActive = location.pathname === link.href ||
                 (link.href !== '/admin' && location.pathname.startsWith(link.href));
               return (

@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -172,12 +174,87 @@ func (h *ProductHandler) Delete(c *gin.Context) {
 		return
 	}
 
+	fmt.Printf("DEBUG: Attempting to delete product with ID: %s\n", id)
+
 	ctx := context.Background()
 	if err := h.productRepo.Delete(ctx, id); err != nil {
+		fmt.Printf("DEBUG: Delete failed with error: %v\n", err)
+		// Check if it's a foreign key constraint error
+		if strings.Contains(strings.ToLower(err.Error()), "violates foreign key constraint") ||
+			strings.Contains(strings.ToLower(err.Error()), "is still referenced") {
+			utils.ErrorResponse(c, 400, "Cannot delete product: it is referenced by existing orders. Consider archiving it instead.")
+			return
+		}
 		utils.ErrorResponse(c, 500, "Failed to delete product")
 		return
 	}
 
+	fmt.Printf("DEBUG: Successfully deleted product with ID: %s\n", id)
 	utils.SuccessMessageResponse(c, 200, "Product deleted successfully")
 }
 
+// BulkUpdatePrice updates prices for multiple products at once
+func (h *ProductHandler) BulkUpdatePrice(c *gin.Context) {
+	var req models.BulkUpdatePriceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.ValidationErrorResponse(c, err.Error())
+		return
+	}
+
+	ctx := context.Background()
+	var updatedCount, failedCount int
+	var failedIDs []string
+
+	for _, productID := range req.ProductIDs {
+		product, err := h.productRepo.GetByID(ctx, productID)
+		if err != nil || product == nil {
+			failedCount++
+			failedIDs = append(failedIDs, productID.String())
+			continue
+		}
+
+		// Calculate new price based on update type
+		var newPrice float64
+		switch req.UpdateType {
+		case "set":
+			// Set exact price
+			newPrice = req.Value
+		case "increase":
+			// Increase by fixed amount
+			newPrice = product.BasePrice + req.Value
+		case "decrease":
+			// Decrease by fixed amount
+			newPrice = product.BasePrice - req.Value
+			if newPrice < 0 {
+				newPrice = 0
+			}
+		case "percentage":
+			// Adjust by percentage (positive = increase, negative = decrease)
+			newPrice = product.BasePrice * (1 + req.Value/100)
+			if newPrice < 0 {
+				newPrice = 0
+			}
+		default:
+			failedCount++
+			failedIDs = append(failedIDs, productID.String())
+			continue
+		}
+
+		product.BasePrice = newPrice
+		if err := h.productRepo.Update(ctx, product); err != nil {
+			failedCount++
+			failedIDs = append(failedIDs, productID.String())
+			continue
+		}
+
+		updatedCount++
+	}
+
+	response := models.BulkUpdatePriceResponse{
+		UpdatedCount: updatedCount,
+		FailedCount:  failedCount,
+		FailedIDs:    failedIDs,
+	}
+
+	utils.SuccessResponse(c, 200, response)
+}

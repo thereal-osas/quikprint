@@ -2,22 +2,38 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/quikprint/backend/internal/models"
 	"github.com/quikprint/backend/internal/repository"
+	"github.com/quikprint/backend/internal/services"
 	"github.com/quikprint/backend/internal/utils"
 )
 
 type OrderHandler struct {
-	orderRepo   *repository.OrderRepository
-	cartRepo    *repository.CartRepository
-	productRepo *repository.ProductRepository
+	orderRepo          *repository.OrderRepository
+	cartRepo           *repository.CartRepository
+	productRepo        *repository.ProductRepository
+	pricingService     *services.PricingService
+	shippingConfigRepo *repository.ShippingConfigRepository
 }
 
-func NewOrderHandler(orderRepo *repository.OrderRepository, cartRepo *repository.CartRepository, productRepo *repository.ProductRepository) *OrderHandler {
-	return &OrderHandler{orderRepo: orderRepo, cartRepo: cartRepo, productRepo: productRepo}
+func NewOrderHandler(
+	orderRepo *repository.OrderRepository,
+	cartRepo *repository.CartRepository,
+	productRepo *repository.ProductRepository,
+	pricingService *services.PricingService,
+	shippingConfigRepo *repository.ShippingConfigRepository,
+) *OrderHandler {
+	return &OrderHandler{
+		orderRepo:          orderRepo,
+		cartRepo:           cartRepo,
+		productRepo:        productRepo,
+		pricingService:     pricingService,
+		shippingConfigRepo: shippingConfigRepo,
+	}
 }
 
 func (h *OrderHandler) CreateOrder(c *gin.Context) {
@@ -31,53 +47,126 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 
 	ctx := context.Background()
 
-	// Get cart items
-	cartItems, err := h.cartRepo.GetByUserID(ctx, userID)
-	if err != nil || len(cartItems) == 0 {
-		utils.ErrorResponse(c, 400, "Cart is empty")
+	var subtotal float64
+	var orderItems []models.OrderItem
+
+	// If items are provided in the request, use them; otherwise fall back to the user's cart
+	if len(req.Items) > 0 {
+		// Build order items from request and calculate pricing using the pricing service
+		for _, itemReq := range req.Items {
+			// Ensure product exists
+			product, err := h.productRepo.GetByID(ctx, itemReq.ProductID)
+			if err != nil || product == nil {
+				utils.ErrorResponse(c, 404, "One or more products in the order were not found")
+				return
+			}
+
+			// Calculate price for this configuration/quantity
+			priceReq := &models.CalculatePriceRequest{
+				ProductID:     itemReq.ProductID,
+				Configuration: itemReq.Configuration,
+				Quantity:      itemReq.Quantity,
+			}
+
+			breakdown, err := h.pricingService.CalculatePrice(ctx, priceReq)
+			if err != nil || breakdown == nil {
+				utils.ErrorResponse(c, 500, "Failed to calculate price for one of the items")
+				return
+			}
+
+			unitPrice := breakdown.Total / float64(itemReq.Quantity)
+			if itemReq.Quantity == 0 {
+				unitPrice = breakdown.Total
+			}
+
+			fmt.Printf("DEBUG: Order item - ProductID=%s, Quantity=%d, UnitPrice=%.2f, TotalPrice=%.2f\n", itemReq.ProductID, itemReq.Quantity, unitPrice, breakdown.Total)
+
+			orderItems = append(orderItems, models.OrderItem{
+				ProductID:     itemReq.ProductID,
+				Quantity:      itemReq.Quantity,
+				Configuration: itemReq.Configuration,
+				UnitPrice:     unitPrice,
+				TotalPrice:    breakdown.Total,
+			})
+			subtotal += breakdown.Total
+		}
+	} else {
+		// Fallback: use items currently in the user's cart
+		cartItems, err := h.cartRepo.GetByUserID(ctx, userID)
+		if err != nil || len(cartItems) == 0 {
+			utils.ErrorResponse(c, 400, "Cart is empty")
+			return
+		}
+
+		for _, item := range cartItems {
+			subtotal += item.TotalPrice
+			orderItems = append(orderItems, models.OrderItem{
+				ProductID:     item.ProductID,
+				Quantity:      item.Quantity,
+				Configuration: item.Configuration,
+				UnitPrice:     item.TotalPrice / float64(item.Quantity),
+				TotalPrice:    item.TotalPrice,
+				UploadedFile:  item.UploadedFile,
+			})
+		}
+	}
+
+	// Fetch shipping configuration from database
+	shippingConfig, err := h.shippingConfigRepo.Get(ctx)
+	if err != nil {
+		utils.ErrorResponse(c, 500, "Failed to fetch shipping configuration")
 		return
 	}
 
-	// Calculate totals
-	var subtotal float64
-	var orderItems []models.OrderItem
-	for _, item := range cartItems {
-		subtotal += item.TotalPrice
-		orderItems = append(orderItems, models.OrderItem{
-			ProductID:     item.ProductID,
-			Quantity:      item.Quantity,
-			Configuration: item.Configuration,
-			UnitPrice:     item.TotalPrice / float64(item.Quantity),
-			TotalPrice:    item.TotalPrice,
-			UploadedFile:  item.UploadedFile,
-		})
+	// Calculate shipping using values from database
+	shipping := 0.0
+	if subtotal < shippingConfig.FreeShippingThreshold {
+		shipping = shippingConfig.ShippingFee
 	}
 
-	// Calculate shipping and tax (simplified)
-	shipping := 0.0
-	if subtotal < 50 {
-		shipping = 9.99
+	// Validate discount
+	if req.Discount < 0 {
+		utils.ErrorResponse(c, 400, "Discount cannot be negative")
+		return
 	}
-	tax := subtotal * 0.08 // 8% tax
+
+	// Ensure discount doesn't exceed subtotal
+	discount := req.Discount
+	if discount > subtotal {
+		discount = subtotal
+		fmt.Printf("DEBUG: Discount capped from %.2f to %.2f\n", req.Discount, discount)
+	}
+
+	// Calculate total - ensure it's never negative
+	total := subtotal + shipping - discount
+	if total < 0 {
+		total = 0
+	}
+
+	fmt.Printf("DEBUG: Order calculation: subtotal=%.2f, shipping=%.2f, discount=%.2f, total=%.2f\n", subtotal, shipping, discount, total)
 
 	order := &models.Order{
 		UserID:          userID,
 		Status:          models.OrderStatusAwaitingPayment,
 		Items:           orderItems,
 		Subtotal:        subtotal,
+		Discount:        discount,
 		Shipping:        shipping,
-		Tax:             tax,
-		Total:           subtotal + shipping + tax,
+		Tax:             0, // VAT removed as requested
+		Total:           total,
 		ShippingAddress: req.ShippingAddress,
 	}
 
 	if err := h.orderRepo.Create(ctx, order); err != nil {
-		utils.ErrorResponse(c, 500, "Failed to create order")
+		fmt.Printf("DEBUG: Order creation error: %v\n", err)
+		utils.ErrorResponse(c, 500, fmt.Sprintf("Failed to create order: %v", err))
 		return
 	}
 
-	// Clear cart
-	h.cartRepo.ClearCart(ctx, userID)
+	// Clear cart if we used it
+	if len(req.Items) == 0 {
+		h.cartRepo.ClearCart(ctx, userID)
+	}
 
 	// Populate product info
 	for i := range order.Items {
@@ -139,13 +228,13 @@ func (h *OrderHandler) GetAllOrders(c *gin.Context) {
 	status := c.Query("status")
 	ctx := context.Background()
 
-	orders, err := h.orderRepo.GetAll(ctx, status)
+	orders, err := h.orderRepo.GetAllAdmin(ctx, status)
 	if err != nil {
 		utils.ErrorResponse(c, 500, "Failed to fetch orders")
 		return
 	}
 	if orders == nil {
-		orders = []models.Order{}
+		orders = []models.AdminOrderResponse{}
 	}
 
 	utils.SuccessResponse(c, 200, orders)

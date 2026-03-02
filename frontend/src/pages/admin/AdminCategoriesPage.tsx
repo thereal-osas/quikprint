@@ -89,7 +89,7 @@ export default function AdminCategoriesPage() {
       name: category.name,
       slug: category.slug,
       description: category.description || '',
-      image: category.image_url || '',
+      image: category.image || '',
     });
   };
 
